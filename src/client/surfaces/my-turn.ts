@@ -1,4 +1,9 @@
 import { renderHoleCardsArea, renderOpponentSeatLabels } from './hole-cards.js';
+import {
+  renderActionsBar,
+  renderPotAndStacks,
+  type LegalActionOption,
+} from '../actions-bar.js';
 
 export type HoleCard = `${string}`;
 
@@ -7,6 +12,11 @@ export interface MyTurnContext {
   seatId: string;
   hole: [HoleCard, HoleCard];
   opponents?: Array<{ seatId: string; label: string; stack: string }>;
+  pot?: number;
+  stacks?: Array<{ seatId: string; stack: number }>;
+  legalActions?: LegalActionOption[];
+  facingBet?: boolean;
+  onSubmitAction?: (action: { type: string; amount?: number }) => void | Promise<void>;
 }
 
 export function renderMyTurn(root: HTMLElement, context: MyTurnContext): void {
@@ -51,5 +61,25 @@ export function renderMyTurn(root: HTMLElement, context: MyTurnContext): void {
 
   header.append(title, match);
   shell.append(felt, playerSeat, header);
+
+  if (context.pot !== undefined && context.stacks) {
+    const publicFacts = document.createElement('div');
+    publicFacts.className = 'table-public-facts';
+    renderPotAndStacks(publicFacts, context.pot, context.stacks);
+    shell.append(publicFacts);
+  }
+
+  if (context.legalActions && context.onSubmitAction) {
+    const actionsHost = document.createElement('div');
+    actionsHost.className = 'betting-controls';
+    renderActionsBar(actionsHost, {
+      enabled: true,
+      facingBet: context.facingBet ?? false,
+      legalActions: context.legalActions,
+      onSubmit: context.onSubmitAction,
+    });
+    shell.append(actionsHost);
+  }
+
   root.append(shell);
 }

@@ -251,6 +251,93 @@ body {
   text-transform: uppercase;
 }
 
+.betting-controls,
+.actions-bar {
+  width: 100%;
+  padding: 0 1.5rem 1.25rem;
+}
+
+.turn-status {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.focus-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.actions-bar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.actions-bar-amount-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.actions-bar-amount {
+  width: 6rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-primary);
+}
+
+.action-button {
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.action-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.action-button:disabled,
+.actions-bar-disabled .action-button {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.actions-bar-disabled-note {
+  width: 100%;
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.table-public-facts {
+  width: 100%;
+  padding: 0 1.5rem;
+  text-align: left;
+}
+
+.table-pot {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.table-stacks {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 @media (max-width: 480px) {
   .surface {
     min-height: 640px;

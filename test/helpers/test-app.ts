@@ -1,5 +1,6 @@
 import { createApp } from '../../src/server/app.js';
 import type { HandRouteDeps } from '../../src/server/hands/routes.js';
+import type { SubmitActionDeps } from '../../src/server/actions/submit.js';
 import type { SeatRouteDeps } from '../../src/server/seats/routes.js';
 import type { TableRouteDeps } from '../../src/server/table/routes.js';
 import { resetEnvCache } from '../../src/server/env.js';
@@ -13,6 +14,7 @@ export interface TestAppOptions {
   seatDeps?: SeatRouteDeps;
   handDeps?: HandRouteDeps;
   tableDeps?: TableRouteDeps;
+  actionDeps?: SubmitActionDeps;
 }
 
 export function createTestApp(options: TestAppOptions = {}) {
@@ -27,6 +29,7 @@ export function createTestApp(options: TestAppOptions = {}) {
     seatDeps: options.seatDeps,
     handDeps: options.handDeps,
     tableDeps: options.tableDeps,
+    actionDeps: options.actionDeps,
   });
 }
 

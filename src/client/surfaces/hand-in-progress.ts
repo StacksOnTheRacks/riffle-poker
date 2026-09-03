@@ -1,4 +1,5 @@
 import { renderHoleCardsArea, renderOpponentSeatLabels } from './hole-cards.js';
+import { renderActionsBar, renderPotAndStacks } from '../actions-bar.js';
 
 export type HoleCard = `${string}`;
 
@@ -7,6 +8,10 @@ export interface HandInProgressContext {
   seatId: string;
   hole: [HoleCard, HoleCard];
   opponents?: Array<{ seatId: string; label: string; stack: string }>;
+  pot?: number;
+  stacks?: Array<{ seatId: string; stack: number }>;
+  facingBet?: boolean;
+  showDisabledActionsBar?: boolean;
 }
 
 export function renderHandInProgress(
@@ -54,5 +59,25 @@ export function renderHandInProgress(
 
   header.append(title, match);
   shell.append(felt, playerSeat, header);
+
+  if (context.pot !== undefined && context.stacks) {
+    const publicFacts = document.createElement('div');
+    publicFacts.className = 'table-public-facts';
+    renderPotAndStacks(publicFacts, context.pot, context.stacks);
+    shell.append(publicFacts);
+  }
+
+  if (context.showDisabledActionsBar) {
+    const actionsHost = document.createElement('div');
+    actionsHost.className = 'betting-controls';
+    renderActionsBar(actionsHost, {
+      enabled: false,
+      facingBet: context.facingBet ?? false,
+      legalActions: [],
+      onSubmit: () => undefined,
+    });
+    shell.append(actionsHost);
+  }
+
   root.append(shell);
 }

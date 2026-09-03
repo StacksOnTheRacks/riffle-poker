@@ -3,8 +3,9 @@ import type { RiffleEnv } from '../env.js';
 import { requireHostAuth, unauthorizedResponse } from '../host-auth.js';
 import { validateMatchId, validateSeatId } from '../seats/validate.js';
 import { dealHandForMatch, type DealHandDeps } from './deal.js';
+import { openBetting, type OpenBettingDeps } from './open.js';
 
-export type HandRouteDeps = DealHandDeps;
+export type HandRouteDeps = DealHandDeps & OpenBettingDeps;
 
 interface DealBody {
   matchId?: unknown;
@@ -130,6 +131,51 @@ export function createHandRoutes(_env: RiffleEnv, deps: HandRouteDeps = {}) {
           );
         case 'invalid_deal':
           return Response.json({ error: 'invalid_deal' }, { status: 400 });
+      }
+    }
+
+    return Response.json(result.value, { status: 201 });
+  });
+
+  routes.post('/betting/open', async (c) => {
+    if (!requireHostAuth(c, _env)) {
+      return unauthorizedResponse();
+    }
+
+    let body: DealBody;
+    try {
+      body = await c.req.json();
+    } catch {
+      return Response.json({ error: 'invalid_match_id' }, { status: 400 });
+    }
+
+    const parsed = parseDealBody(body);
+    if (!parsed.ok) {
+      return Response.json({ error: parsed.error }, { status: 400 });
+    }
+
+    const result = await openBetting(parsed.value, deps);
+    if (!result.ok) {
+      switch (result.error.kind) {
+        case 'turnur_unauthenticated':
+          return Response.json(
+            { error: 'turnur_unauthenticated', reason: result.error.reason },
+            { status: 503 },
+          );
+        case 'turnur':
+          return result.error.response;
+        case 'unknown_seat_id':
+          return Response.json({ error: 'unknown_seat_id' }, { status: 400 });
+        case 'invalid_deal':
+          return Response.json({ error: 'invalid_deal' }, { status: 400 });
+        case 'holes_not_dealt':
+          return Response.json({ error: 'holes_not_dealt' }, { status: 400 });
+        case 'invalid_view':
+          return result.error.response;
+        case 'betting_already_open':
+          return result.error.response;
+        case 'illegal_turn':
+          return result.error.response;
       }
     }
 
