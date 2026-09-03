@@ -8,19 +8,33 @@ import {
   createPlayPageHandler,
   type BootstrapStores,
 } from './bootstrap/routes.js';
+import {
+  createSeatCapabilityRoutes,
+  createSeatCapabilityStores,
+  type SeatCapabilityStores,
+} from './seats/capability/routes.js';
+
+export interface AppStores extends BootstrapStores, SeatCapabilityStores {}
 
 export interface AppOptions {
   env: RiffleEnv;
-  stores?: BootstrapStores;
+  stores?: Partial<AppStores>;
 }
 
 export function createApp(options: AppOptions) {
   const { env } = options;
-  const stores = options.stores ?? createBootstrapStores();
+  const bootstrapStores = createBootstrapStores();
+  const seatCapabilityStores = createSeatCapabilityStores(bootstrapStores.playSessionStore);
+  const stores: AppStores = {
+    ...bootstrapStores,
+    ...seatCapabilityStores,
+    ...options.stores,
+  };
 
   const app = new Hono();
 
   app.route('/v1/bootstrap', createBootstrapRoutes(env, stores));
+  app.route('/v1/seats/capability', createSeatCapabilityRoutes(env, stores));
   app.get('/play', createPlayPageHandler(env));
   app.get('/play.js', createPlayJsHandler());
   app.get('/play.css', createPlayCssHandler());

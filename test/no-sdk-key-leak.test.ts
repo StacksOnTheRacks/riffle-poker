@@ -81,4 +81,13 @@ describe('Turnur SDK key leak prevention', () => {
       }
     }
   });
+
+  it('extends seat capability source leak checks from issue #3', () => {
+    const seatCapabilityDir = join(projectRoot, 'src', 'server', 'seats', 'capability');
+    for (const filePath of collectFiles(seatCapabilityDir)) {
+      const contents = readFileSync(filePath, 'utf8');
+      expect(contents).not.toMatch(/@turnur\/sdk/);
+      expect(contents).not.toMatch(/TURNUR_SDK_KEY/);
+    }
+  });
 });
