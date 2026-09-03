@@ -12,8 +12,10 @@ import type { SeatTable } from '../table/dto.js';
 import { parseHoleView } from '../table/dto.js';
 import { loadShoeForHand } from '../table/seat.js';
 import { maybeAdvanceStreet } from '../hands/advance.js';
+import { maybeCompleteHand } from '../hands/complete.js';
 import { buildActionPayload, type MoveLogItem } from '../hands/move-types.js';
 import {
+  hasHandCompleteInActions,
   hasStreetDealAfterLastAction,
   lastActionSeatId,
 } from '../hands/move-types.js';
@@ -22,6 +24,7 @@ import {
   findLatestHandOpen,
   parseActionBody,
   reconstructHand,
+  type ReconstructedHand,
 } from '../hands/reconstruct.js';
 
 export interface SubmitActionInput {
@@ -40,6 +43,8 @@ export interface SubmitActionDeps {
   applyActionFn?: typeof applyAction;
   legalActionsFn?: typeof legalActions;
   advanceStreetFn?: typeof import('../../rules/index.js').advanceStreet;
+  completeFoldToOneFn?: typeof import('../../rules/index.js').completeFoldToOne;
+  showdownFn?: typeof import('../../rules/index.js').showdown;
 }
 
 export type SubmitActionError =
@@ -57,7 +62,9 @@ export type SubmitActionError =
   | { kind: 'illegal_turn'; response: Response }
   | { kind: 'street_not_complete'; response: Response }
   | { kind: 'cannot_advance'; response: Response }
-  | { kind: 'advance_failed'; response: Response };
+  | { kind: 'advance_failed'; response: Response }
+  | { kind: 'hand_not_ready'; response: Response }
+  | { kind: 'complete_failed'; response: Response };
 
 function isTurnur409(error: unknown): boolean {
   return (
@@ -133,7 +140,7 @@ async function loadAllHoles(
 function projectSeatTable(
   matchId: string,
   seatId: string,
-  state: HandState,
+  state: ReconstructedHand,
   hole: [Card, Card] | null,
   legalActionsList?: LegalizedAction[],
 ): SeatTable {
@@ -150,11 +157,106 @@ function projectSeatTable(
     table.board = [...state.board];
   }
 
+  if (state.phase === 'complete') {
+    if (state.completeReason) {
+      table.completeReason = state.completeReason;
+    }
+    if (state.winners) {
+      table.winners = state.winners.map((winner) => ({
+        seatId: winner.seatId,
+        amount: winner.amount,
+      }));
+    }
+    if (state.shownHolesFacts && state.shownHolesFacts.length > 0) {
+      table.shownHoles = state.shownHolesFacts.map((shown) => ({
+        seatId: shown.seatId,
+        hole: [shown.hole[0], shown.hole[1]],
+      }));
+    }
+  }
+
   if (legalActionsList && legalActionsList.length > 0) {
     table.legalActions = legalActionsList;
   }
 
   return table;
+}
+
+function shouldHealComplete(state: HandState, actions: MoveLogItem[]): boolean {
+  if (state.phase !== 'fold_to_one' && state.phase !== 'showdown_ready') {
+    return false;
+  }
+  return !hasHandCompleteInActions(actions);
+}
+
+function completeReasonForPhase(phase: HandState['phase']): 'fold_to_one' | 'showdown' | null {
+  if (phase === 'fold_to_one') {
+    return 'fold_to_one';
+  }
+  if (phase === 'showdown_ready') {
+    return 'showdown';
+  }
+  return null;
+}
+
+async function runCompleteHeal(
+  client: TurnurClient,
+  matchId: string,
+  handOpen: NonNullable<ReturnType<typeof findLatestHandOpen>>,
+  items: MoveLogItem[],
+  healSeatId: string,
+  deps: SubmitActionDeps,
+): Promise<
+  | { ok: true; value: { state: ReconstructedHand; holes: Map<string, [Card, Card]>; actions: MoveLogItem[] } }
+  | { ok: false; error: SubmitActionError }
+> {
+  const loaded = await reloadHandState(client, matchId, handOpen, items);
+  if (!loaded.ok) {
+    return loaded;
+  }
+
+  const reason = completeReasonForPhase(loaded.value.state.phase);
+  if (!reason) {
+    return loaded;
+  }
+
+  const completed = await maybeCompleteHand({
+    matchId,
+    pathSeatId: healSeatId,
+    state: loaded.value.state,
+    reason,
+    client,
+    deps: {
+      completeFoldToOneFn: deps.completeFoldToOneFn,
+      showdownFn: deps.showdownFn,
+    },
+  });
+
+  if (!completed.ok) {
+    const err = completed.error;
+    if (err.kind === 'hand_not_ready') {
+      return { ok: false, error: { kind: 'hand_not_ready', response: err.response } };
+    }
+    if (err.kind === 'all_in_or_side_pot_unsupported') {
+      return {
+        ok: false,
+        error: { kind: 'all_in_or_side_pot_unsupported', response: err.response },
+      };
+    }
+    if (err.kind === 'complete_failed') {
+      return { ok: false, error: { kind: 'complete_failed', response: err.response } };
+    }
+    if (err.kind === 'already_complete') {
+      return { ok: false, error: { kind: 'already_complete', response: err.response } };
+    }
+    if (err.kind === 'illegal_turn') {
+      return { ok: false, error: { kind: 'illegal_turn', response: err.response } };
+    }
+    return { ok: false, error: { kind: 'turnur', response: err.response } };
+  }
+
+  const refreshedMoves = await client.match.moves.list(matchId);
+  return reloadHandState(client, matchId, handOpen, refreshedMoves.items as MoveLogItem[]);
 }
 
 function shouldAdvanceAfterAction(state: HandState): boolean {
@@ -177,7 +279,7 @@ async function reloadHandState(
   handOpen: NonNullable<ReturnType<typeof findLatestHandOpen>>,
   items: MoveLogItem[],
 ): Promise<
-  | { ok: true; value: { state: HandState; holes: Map<string, [Card, Card]>; actions: MoveLogItem[] } }
+  | { ok: true; value: { state: ReconstructedHand; holes: Map<string, [Card, Card]>; actions: MoveLogItem[] } }
   | { ok: false; error: SubmitActionError }
 > {
   const holes = await loadAllHoles(
@@ -367,6 +469,34 @@ export async function submitAction(
     actions = loaded.value.actions;
   }
 
+  if (shouldHealComplete(reconstructedState, actions)) {
+    const healSeatId = lastActionSeatId(actions) ?? input.seatId;
+    const healedComplete = await runCompleteHeal(
+      client,
+      input.matchId,
+      handOpen,
+      items,
+      healSeatId,
+      deps,
+    );
+    if (!healedComplete.ok) {
+      return { ok: false, error: healedComplete.error };
+    }
+    reconstructedState = healedComplete.value.state;
+    holes = healedComplete.value.holes;
+    actions = healedComplete.value.actions;
+  }
+
+  if (reconstructedState.phase === 'complete') {
+    return {
+      ok: false,
+      error: {
+        kind: 'already_complete',
+        response: Response.json({ error: 'already_complete' }, { status: 409 }),
+      },
+    };
+  }
+
   const legalized = legalizeFn(reconstructedState, input.seatId, action);
   if (!legalized.ok) {
     const mapped = mapRulesReject(legalized.error.code);
@@ -438,6 +568,62 @@ export async function submitAction(
       return { ok: false, error: { kind: 'turnur', response: err.response } };
     }
     nextState = advanced.value;
+  } else if (nextState.phase === 'fold_to_one' || nextState.phase === 'showdown_ready') {
+    const reason = completeReasonForPhase(nextState.phase);
+    if (!reason) {
+      return {
+        ok: false,
+        error: {
+          kind: 'complete_failed',
+          response: Response.json({ error: 'complete_failed' }, { status: 502 }),
+        },
+      };
+    }
+    const completed = await maybeCompleteHand({
+      matchId: input.matchId,
+      pathSeatId: input.seatId,
+      state: nextState,
+      reason,
+      client,
+      deps: {
+        completeFoldToOneFn: deps.completeFoldToOneFn,
+        showdownFn: deps.showdownFn,
+      },
+    });
+    if (!completed.ok) {
+      const err = completed.error;
+      if (err.kind === 'hand_not_ready') {
+        return { ok: false, error: { kind: 'hand_not_ready', response: err.response } };
+      }
+      if (err.kind === 'all_in_or_side_pot_unsupported') {
+        return {
+          ok: false,
+          error: { kind: 'all_in_or_side_pot_unsupported', response: err.response },
+        };
+      }
+      if (err.kind === 'complete_failed') {
+        return { ok: false, error: { kind: 'complete_failed', response: err.response } };
+      }
+      if (err.kind === 'already_complete') {
+        return { ok: false, error: { kind: 'already_complete', response: err.response } };
+      }
+      if (err.kind === 'illegal_turn') {
+        return { ok: false, error: { kind: 'illegal_turn', response: err.response } };
+      }
+      return { ok: false, error: { kind: 'turnur', response: err.response } };
+    }
+
+    const refreshedMoves = await client.match.moves.list(input.matchId);
+    loaded = await reloadHandState(
+      client,
+      input.matchId,
+      handOpen,
+      refreshedMoves.items as MoveLogItem[],
+    );
+    if (!loaded.ok) {
+      return { ok: false, error: loaded.error };
+    }
+    nextState = loaded.value.state;
   } else if (
     nextState.phase === 'betting' &&
     nextState.currentSeatId !== null

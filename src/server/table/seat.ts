@@ -126,6 +126,24 @@ export async function getSeatTable(
     table.board = board;
   }
 
+  if (state.phase === 'complete') {
+    if (state.completeReason) {
+      table.completeReason = state.completeReason;
+    }
+    if (state.winners) {
+      table.winners = state.winners.map((winner) => ({
+        seatId: winner.seatId,
+        amount: winner.amount,
+      }));
+    }
+    if (state.shownHolesFacts && state.shownHolesFacts.length > 0) {
+      table.shownHoles = state.shownHolesFacts.map((shown) => ({
+        seatId: shown.seatId,
+        hole: [shown.hole[0], shown.hole[1]],
+      }));
+    }
+  }
+
   if (state.phase === 'betting' && state.currentSeatId === input.seatId) {
     table.legalActions = legalActions(state, input.seatId);
   }

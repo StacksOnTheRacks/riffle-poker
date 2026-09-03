@@ -106,6 +106,7 @@ describe('Turnur SDK key leak prevention', () => {
           !filePath.endsWith('open.ts') &&
           !filePath.endsWith('submit.ts') &&
           !filePath.endsWith('advance.ts') &&
+          !filePath.endsWith('complete.ts') &&
           !filePath.endsWith('shoe.ts') &&
           !filePath.endsWith('public.ts') &&
           !filePath.endsWith('view.ts') &&
@@ -126,6 +127,7 @@ describe('Turnur SDK key leak prevention', () => {
     const clientFiles = [
       join(projectRoot, 'src', 'client', 'actions-bar.ts'),
       join(projectRoot, 'src', 'client', 'board.ts'),
+      join(projectRoot, 'src', 'client', 'hand-complete.ts'),
     ];
     for (const filePath of clientFiles) {
       const contents = readFileSync(filePath, 'utf8');
