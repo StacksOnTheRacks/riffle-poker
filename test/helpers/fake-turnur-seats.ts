@@ -87,8 +87,14 @@ export function createFakeTurnurClientWithSeats(
             throw options.createError;
           }
           const seatId = randomUUID();
-          const createdAt = new Date().toISOString();
           const roster = store.seats.get(matchId) ?? [];
+          const latestCreatedAt = roster.reduce((latest, seat) => {
+            const createdAt = String(seat.createdAt ?? '');
+            return createdAt > latest ? createdAt : latest;
+          }, '');
+          const createdAt = latestCreatedAt
+            ? new Date(Date.parse(latestCreatedAt) + 1).toISOString()
+            : new Date().toISOString();
           roster.push({
             seatId,
             createdAt,
@@ -197,9 +203,10 @@ export function seedFakeSeats(
   matchId: string,
   seatIds: string[],
 ): void {
-  const roster = seatIds.map((seatId) => ({
+  const baseTime = Date.now();
+  const roster = seatIds.map((seatId, index) => ({
     seatId,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(baseTime + index).toISOString(),
   }));
   store.seats.set(matchId, roster);
   store.currentSeat.set(matchId, null);

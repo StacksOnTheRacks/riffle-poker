@@ -131,6 +131,8 @@ export function createHandRoutes(_env: RiffleEnv, deps: HandRouteDeps = {}) {
           );
         case 'invalid_deal':
           return Response.json({ error: 'invalid_deal' }, { status: 400 });
+        case 'shoe_ambiguous':
+          return result.error.response;
       }
     }
 
@@ -175,6 +177,10 @@ export function createHandRoutes(_env: RiffleEnv, deps: HandRouteDeps = {}) {
         case 'betting_already_open':
           return result.error.response;
         case 'illegal_turn':
+          return result.error.response;
+        case 'shoe_missing':
+          return result.error.response;
+        case 'shoe_ambiguous':
           return result.error.response;
       }
     }

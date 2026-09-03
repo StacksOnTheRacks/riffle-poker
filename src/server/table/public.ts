@@ -2,13 +2,14 @@ import type { TurnurClient } from '@turnur/sdk';
 import type { Card } from '../../rules/types.js';
 import { requireAuthenticatedTurnurClient } from '../turnur/session.js';
 import type { PublicTable } from './dto.js';
-import type { MoveLogItem } from '../hands/move-types.js';
-import { syntheticHolesForSeats } from '../hands/move-types.js';
 import {
   actionsAfterHandOpen,
   findLatestHandOpen,
   reconstructHand,
 } from '../hands/reconstruct.js';
+import type { MoveLogItem } from '../hands/move-types.js';
+import { findLatestStreetBoard, syntheticHolesForSeats } from '../hands/move-types.js';
+import { filterPublicRosterSeats } from '../hands/shoe.js';
 
 export interface PublicTableInput {
   matchId: string;
@@ -18,6 +19,20 @@ export interface PublicTableDeps {
   getClient?: () => Promise<TurnurClient>;
 }
 
+function projectBoard(
+  actions: MoveLogItem[],
+  stateBoard: Card[],
+): Card[] | undefined {
+  const fromLog = findLatestStreetBoard(actions);
+  if (fromLog && fromLog.length > 0) {
+    return fromLog;
+  }
+  if (stateBoard.length >= 3) {
+    return stateBoard;
+  }
+  return undefined;
+}
+
 export async function getPublicTable(
   input: PublicTableInput,
   deps: PublicTableDeps = {},
@@ -25,6 +40,7 @@ export async function getPublicTable(
   const getClient = deps.getClient ?? requireAuthenticatedTurnurClient;
   const client = await getClient();
   const result = await client.match.seat.list(input.matchId);
+  const filteredRoster = filterPublicRosterSeats(result.seats, null);
 
   let movesList;
   try {
@@ -32,7 +48,7 @@ export async function getPublicTable(
   } catch {
     return {
       matchId: input.matchId,
-      seats: result.seats.map((seat) => ({ seatId: seat.seatId })),
+      seats: filteredRoster.map((seat) => ({ seatId: seat.seatId })),
       currentSeat: result.currentSeat,
     };
   }
@@ -40,36 +56,44 @@ export async function getPublicTable(
   const items = movesList.items as MoveLogItem[];
   const handOpen = findLatestHandOpen(items);
   if (!handOpen) {
+    const rosterBeforeOpen = filterPublicRosterSeats(result.seats, null);
     return {
       matchId: input.matchId,
-      seats: result.seats.map((seat) => ({ seatId: seat.seatId })),
+      seats: rosterBeforeOpen.map((seat) => ({ seatId: seat.seatId })),
       currentSeat: result.currentSeat,
     };
   }
 
+  const actions = actionsAfterHandOpen(items);
   const seatIds = handOpen.seats.map((seat) => seat.seatId);
   const holesBySeat = syntheticHolesForSeats(seatIds);
   const reconstructed = reconstructHand({
     handOpen,
-    actions: actionsAfterHandOpen(items),
+    actions,
     holesBySeat,
+    shoe: null,
   });
 
   if (!reconstructed.ok) {
     return {
       matchId: input.matchId,
-      seats: result.seats.map((seat) => ({ seatId: seat.seatId })),
+      seats: handOpen.seats.map((seat) => ({ seatId: seat.seatId })),
       currentSeat: result.currentSeat,
     };
   }
 
   const state = reconstructed.value;
-  return {
+  const board = projectBoard(actions, state.board);
+  const table: PublicTable = {
     matchId: input.matchId,
     seats: state.seats.map((seat) => ({ seatId: seat.seatId, stack: seat.stack })),
     currentSeat: state.currentSeatId,
     pot: state.pot,
   };
+  if (board) {
+    table.board = board;
+  }
+  return table;
 }
 
 export async function loadSeatHole(

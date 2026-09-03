@@ -32,6 +32,7 @@ export type PublicTable = {
   seats: PublicTableSeat[];
   currentSeat: string | null;
   pot?: number;
+  board?: Card[];
 };
 
 export type SeatViewResponse = {
@@ -44,6 +45,7 @@ export type SeatTable = {
   seats: PublicTableSeat[];
   currentSeat: string | null;
   pot?: number;
+  board?: Card[];
   seatId: string;
   hole: [Card, Card] | null;
   legalActions?: LegalizedAction[];

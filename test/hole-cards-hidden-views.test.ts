@@ -121,17 +121,22 @@ describe('POST /v1/hands/deal and hidden views', () => {
       expect(body[key]).toBeUndefined();
     }
 
-    expect(store.viewPutCalls).toBe(2);
+    expect(store.viewPutCalls).toBe(3);
+    expect(store.seatCreateCalls).toBe(1);
     expect(store.turnSetCalls).toBe(0);
     expect(store.moveCreateCalls).toBe(0);
     expect(requireSeatCapabilitySpy).not.toHaveBeenCalled();
 
     for (const put of store.viewPutBodies) {
-      expect(put.view).toEqual(
-        expect.objectContaining({
-          hole: expect.arrayContaining([expect.any(String), expect.any(String)]),
-        }),
-      );
+      if ('hole' in (put.view as object)) {
+        expect(put.view).toEqual(
+          expect.objectContaining({
+            hole: expect.arrayContaining([expect.any(String), expect.any(String)]),
+          }),
+        );
+      } else {
+        expect((put.view as { kind?: string }).kind).toBe('dealer_shoe');
+      }
     }
   });
 
@@ -164,7 +169,9 @@ describe('POST /v1/hands/deal and hidden views', () => {
       body: dealBody(),
     });
 
-    expect(storeA.viewPutBodies).toEqual(storeB.viewPutBodies);
+    expect(storeA.viewPutBodies.filter((body) => 'hole' in (body.view as object))).toEqual(
+      storeB.viewPutBodies.filter((body) => 'hole' in (body.view as object)),
+    );
   });
 
   it('rejects unauthenticated host deal without view.put', async () => {

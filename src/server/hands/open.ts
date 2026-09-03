@@ -8,6 +8,7 @@ import { mapTableTurnurError } from '../table/errors.js';
 import { parseHoleView } from '../table/dto.js';
 import { buildHandOpenPayload, type MoveLogItem } from './move-types.js';
 import { findLatestHandOpen, reconstructHand } from './reconstruct.js';
+import { resolveShoeSeatIdFromExtras } from './shoe.js';
 
 export interface OpenBettingInput {
   matchId: string;
@@ -28,7 +29,9 @@ export type OpenBettingError =
   | { kind: 'holes_not_dealt' }
   | { kind: 'invalid_view'; response: Response }
   | { kind: 'betting_already_open'; response: Response }
-  | { kind: 'illegal_turn'; response: Response };
+  | { kind: 'illegal_turn'; response: Response }
+  | { kind: 'shoe_missing'; response: Response }
+  | { kind: 'shoe_ambiguous'; response: Response };
 
 function isTurnur409(error: unknown): boolean {
   return (
@@ -143,7 +146,34 @@ export async function openBetting(
     };
   }
 
-  const handOpenPayload = buildHandOpenPayload(input);
+  const playerSeatIds = input.seats.map((seat) => seat.seatId);
+  const shoeResolve = resolveShoeSeatIdFromExtras(
+    roster.seats.map((seat) => seat.seatId),
+    playerSeatIds,
+  );
+  if (!shoeResolve.ok) {
+    if (shoeResolve.error === 'shoe_missing') {
+      return {
+        ok: false,
+        error: {
+          kind: 'shoe_missing',
+          response: Response.json({ error: 'shoe_missing' }, { status: 400 }),
+        },
+      };
+    }
+    return {
+      ok: false,
+      error: {
+        kind: 'shoe_ambiguous',
+        response: Response.json({ error: 'shoe_ambiguous' }, { status: 502 }),
+      },
+    };
+  }
+
+  const handOpenPayload = buildHandOpenPayload({
+    ...input,
+    shoeSeatId: shoeResolve.shoeSeatId,
+  });
   const reconstructed = reconstructHand({
     handOpen: handOpenPayload,
     actions: [],

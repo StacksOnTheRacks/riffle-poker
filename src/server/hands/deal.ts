@@ -7,6 +7,7 @@ import {
 } from '../turnur/session.js';
 import { mapTableTurnurError } from '../table/errors.js';
 import { createCryptoRng } from './rng.js';
+import { buildShoeView, putShoe, resolveShoeSeatIdFromExtras } from './shoe.js';
 
 export interface DealHandInput {
   matchId: string;
@@ -31,7 +32,8 @@ export type DealHandError =
   | { kind: 'turnur'; response: Response }
   | { kind: 'unknown_seat_id' }
   | { kind: 'invalid_deal' }
-  | { kind: 'all_in_or_side_pot_unsupported' };
+  | { kind: 'all_in_or_side_pot_unsupported' }
+  | { kind: 'shoe_ambiguous'; response: Response };
 
 export async function dealHandForMatch(
   input: DealHandInput,
@@ -92,6 +94,47 @@ export async function dealHandForMatch(
         error: { kind: 'turnur', response: mapTableTurnurError(error, 'seat') },
       };
     }
+  }
+
+  const playerSeatIds = input.seats.map((seat) => seat.seatId);
+  const rosterSeatIds = roster.seats.map((seat) => seat.seatId);
+  const shoeResolve = resolveShoeSeatIdFromExtras(rosterSeatIds, playerSeatIds);
+
+  let shoeSeatId: string;
+  if (shoeResolve.ok) {
+    shoeSeatId = shoeResolve.shoeSeatId;
+  } else if (shoeResolve.error === 'shoe_missing') {
+    try {
+      const created = await client.match.seat.create(input.matchId);
+      shoeSeatId = created.seatId;
+    } catch (error) {
+      return {
+        ok: false,
+        error: { kind: 'turnur', response: mapTableTurnurError(error, 'seat') },
+      };
+    }
+  } else {
+    return {
+      ok: false,
+      error: {
+        kind: 'shoe_ambiguous',
+        response: Response.json({ error: 'shoe_ambiguous' }, { status: 502 }),
+      },
+    };
+  }
+
+  try {
+    await putShoe(
+      client,
+      input.matchId,
+      shoeSeatId,
+      buildShoeView(dealt.value.deckRemaining, dealt.value.burns),
+    );
+  } catch (error) {
+    return {
+      ok: false,
+      error: { kind: 'turnur', response: mapTableTurnurError(error, 'seat') },
+    };
   }
 
   return {
