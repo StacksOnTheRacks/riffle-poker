@@ -1,5 +1,7 @@
 import { createApp } from '../../src/server/app.js';
+import type { HandRouteDeps } from '../../src/server/hands/routes.js';
 import type { SeatRouteDeps } from '../../src/server/seats/routes.js';
+import type { TableRouteDeps } from '../../src/server/table/routes.js';
 import { resetEnvCache } from '../../src/server/env.js';
 import {
   TEST_FRAME_ANCESTORS,
@@ -9,6 +11,8 @@ import {
 
 export interface TestAppOptions {
   seatDeps?: SeatRouteDeps;
+  handDeps?: HandRouteDeps;
+  tableDeps?: TableRouteDeps;
 }
 
 export function createTestApp(options: TestAppOptions = {}) {
@@ -21,6 +25,8 @@ export function createTestApp(options: TestAppOptions = {}) {
       frameAncestors: TEST_FRAME_ANCESTORS,
     },
     seatDeps: options.seatDeps,
+    handDeps: options.handDeps,
+    tableDeps: options.tableDeps,
   });
 }
 

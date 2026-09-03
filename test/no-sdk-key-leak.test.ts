@@ -91,27 +91,31 @@ describe('Turnur SDK key leak prevention', () => {
     }
   });
 
-  it('extends seat create/list source leak checks from issue #4', () => {
-    const seatDirs = [
-      join(projectRoot, 'src', 'server', 'seats'),
+  it('extends hands/table source leak checks from issue #6', () => {
+    const dirs = [
+      join(projectRoot, 'src', 'server', 'hands'),
+      join(projectRoot, 'src', 'server', 'table'),
     ];
-    const checked = new Set<string>();
-    for (const seatDir of seatDirs) {
-      for (const filePath of collectFiles(seatDir)) {
-        if (filePath.includes('/capability/') || checked.has(filePath)) {
-          continue;
-        }
-        checked.add(filePath);
+    for (const dir of dirs) {
+      for (const filePath of collectFiles(dir)) {
         const contents = readFileSync(filePath, 'utf8');
         expect(contents).not.toMatch(/TURNUR_SDK_KEY/);
         if (
-          !filePath.endsWith('create.ts') &&
-          !filePath.endsWith('list.ts') &&
-          !filePath.endsWith('errors.ts')
+          !filePath.endsWith('deal.ts') &&
+          !filePath.endsWith('public.ts') &&
+          !filePath.endsWith('view.ts') &&
+          !filePath.endsWith('seat.ts') &&
+          !filePath.endsWith('routes.ts')
         ) {
           expect(contents).not.toMatch(/@turnur\/sdk/);
         }
       }
+    }
+
+    for (const filePath of collectFiles(join(projectRoot, 'src', 'client', 'surfaces'))) {
+      const contents = readFileSync(filePath, 'utf8');
+      assertNoForbiddenPatterns(filePath, contents);
+      expect(contents).not.toMatch(/from ['"].*\/rules\//);
     }
   });
 });

@@ -149,6 +149,91 @@ body {
   background: rgba(0, 0, 0, 0.2);
 }
 
+.hole-area-label {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hole-cards-dealt {
+  gap: 0.5rem;
+}
+
+.hole-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 3.75rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0.35rem;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: #f8f8fa;
+  color: #101014;
+  font-weight: 700;
+}
+
+.hole-card-tag {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.hole-card-rank-suit {
+  font-size: 0.95rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.deal-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.opponent-seats {
+  position: absolute;
+  inset: 2rem 2.5rem auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.opponent-seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.opponent-seat-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.opponent-seat-stack {
+  font-variant-numeric: tabular-nums;
+}
+
+.surface-hand-in-progress,
+.surface-my-turn {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  justify-content: flex-end;
+}
+
 .table-header {
   position: relative;
   z-index: 1;

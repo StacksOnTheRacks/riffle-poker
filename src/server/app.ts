@@ -14,6 +14,8 @@ import {
   type SeatCapabilityStores,
 } from './seats/capability/routes.js';
 import { createSeatRoutes, type SeatRouteDeps } from './seats/routes.js';
+import { createHandRoutes, type HandRouteDeps } from './hands/routes.js';
+import { createTableRoutes, type TableRouteDeps } from './table/routes.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {}
 
@@ -21,6 +23,8 @@ export interface AppOptions {
   env: RiffleEnv;
   stores?: Partial<AppStores>;
   seatDeps?: SeatRouteDeps;
+  handDeps?: HandRouteDeps;
+  tableDeps?: TableRouteDeps;
 }
 
 export function createApp(options: AppOptions) {
@@ -38,6 +42,8 @@ export function createApp(options: AppOptions) {
   app.route('/v1/bootstrap', createBootstrapRoutes(env, stores));
   app.route('/v1/seats', createSeatRoutes(env, options.seatDeps));
   app.route('/v1/seats/capability', createSeatCapabilityRoutes(env, stores));
+  app.route('/v1/hands', createHandRoutes(env, options.handDeps));
+  app.route('/v1', createTableRoutes(env, stores, options.tableDeps));
   app.get('/play', createPlayPageHandler(env));
   app.get('/play.js', createPlayJsHandler());
   app.get('/play.css', createPlayCssHandler());
