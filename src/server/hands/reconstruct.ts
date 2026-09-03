@@ -11,11 +11,14 @@ import {
 import type { Card, HandState, SeatState, Street } from '../../rules/types.js';
 import {
   isActionPayload,
+  isHandCompletePayload,
   isStreetDealPayload,
   type HandOpenPayload,
+  type HandCompletePayload,
   type MoveLogItem,
   type StreetDealPayload,
 } from './move-types.js';
+import { isCard } from '../table/dto.js';
 import { cloneShoeView, type ShoeView } from './shoe.js';
 
 export type ReconstructFailure =
@@ -23,8 +26,12 @@ export type ReconstructFailure =
   | 'invalid_view'
   | 'reconstruct_failed';
 
+export type ReconstructedHand = HandState & {
+  shownHolesFacts?: Array<{ seatId: string; hole: [Card, Card] }>;
+};
+
 export type ReconstructResult =
-  | { ok: true; value: HandState }
+  | { ok: true; value: ReconstructedHand }
   | { ok: false; error: ReconstructFailure };
 
 export function findLatestHandOpen(moves: MoveLogItem[]): HandOpenPayload | null {
@@ -150,6 +157,95 @@ function applyStreetDealFromLog(
   return { ok: true, value: state };
 }
 
+function applyHandCompleteFromLog(
+  state: HandState,
+  payload: HandCompletePayload,
+): ReconstructResult {
+  if (state.phase === 'complete') {
+    return { ok: false, error: 'reconstruct_failed' };
+  }
+
+  if (payload.reason !== 'fold_to_one' && payload.reason !== 'showdown') {
+    return { ok: false, error: 'reconstruct_failed' };
+  }
+
+  if (!Array.isArray(payload.winners) || payload.winners.length === 0) {
+    return { ok: false, error: 'reconstruct_failed' };
+  }
+
+  const stillInBefore = state.seats.filter((seat) => !seat.folded).map((seat) => seat.seatId);
+  const prePot = state.pot;
+  let winnerSum = 0;
+  const seenWinnerIds = new Set<string>();
+
+  for (const winner of payload.winners) {
+    if (
+      typeof winner.seatId !== 'string' ||
+      typeof winner.amount !== 'number' ||
+      !Number.isInteger(winner.amount) ||
+      winner.amount <= 0
+    ) {
+      return { ok: false, error: 'reconstruct_failed' };
+    }
+    if (seenWinnerIds.has(winner.seatId)) {
+      return { ok: false, error: 'reconstruct_failed' };
+    }
+    seenWinnerIds.add(winner.seatId);
+
+    const seat = state.seats.find((entry) => entry.seatId === winner.seatId);
+    if (!seat || seat.folded) {
+      return { ok: false, error: 'reconstruct_failed' };
+    }
+    winnerSum += winner.amount;
+    seat.stack += winner.amount;
+  }
+
+  if (winnerSum !== prePot) {
+    return { ok: false, error: 'reconstruct_failed' };
+  }
+
+  state.pot = 0;
+  state.phase = 'complete';
+  state.completeReason = payload.reason;
+  state.winners = payload.winners.map((winner) => ({
+    seatId: winner.seatId,
+    amount: winner.amount,
+  }));
+  state.currentSeatId = null;
+
+  let shownHolesFacts: ReconstructedHand['shownHolesFacts'];
+
+  if (payload.reason === 'fold_to_one') {
+    if (payload.shownHoles && payload.shownHoles.length > 0) {
+      return { ok: false, error: 'reconstruct_failed' };
+    }
+  } else if (payload.shownHoles) {
+    shownHolesFacts = [];
+    for (const shown of payload.shownHoles) {
+      if (
+        typeof shown.seatId !== 'string' ||
+        !stillInBefore.includes(shown.seatId) ||
+        !Array.isArray(shown.hole) ||
+        shown.hole.length !== 2 ||
+        !isCard(shown.hole[0]) ||
+        !isCard(shown.hole[1])
+      ) {
+        return { ok: false, error: 'reconstruct_failed' };
+      }
+      shownHolesFacts.push({
+        seatId: shown.seatId,
+        hole: [shown.hole[0], shown.hole[1]],
+      });
+    }
+  }
+
+  const result: ReconstructedHand = state;
+  if (shownHolesFacts) {
+    result.shownHolesFacts = shownHolesFacts;
+  }
+  return { ok: true, value: result };
+}
+
 function buildInitialState(
   handOpen: HandOpenPayload,
   holesBySeat: Map<string, [Card, Card]>,
@@ -224,9 +320,14 @@ export function reconstructHand(input: {
     return initial;
   }
 
-  let state = initial.value;
+  let state: ReconstructedHand = initial.value;
+  let completeSeen = false;
 
   for (const item of input.actions) {
+    if (completeSeen) {
+      return { ok: false, error: 'reconstruct_failed' };
+    }
+
     if (isActionPayload(item.payload)) {
       const applied = applyAction(state, item.seatId, item.payload.action);
       if (!applied.ok) {
@@ -242,6 +343,16 @@ export function reconstructHand(input: {
         return applied;
       }
       state = applied.value;
+      continue;
+    }
+
+    if (isHandCompletePayload(item.payload)) {
+      const applied = applyHandCompleteFromLog(state, item.payload);
+      if (!applied.ok) {
+        return applied;
+      }
+      state = applied.value;
+      completeSeen = true;
       continue;
     }
 

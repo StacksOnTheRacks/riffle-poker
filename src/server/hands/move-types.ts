@@ -19,6 +19,25 @@ export type StreetDealPayload = {
   board: Card[];
 };
 
+export type HandCompleteReason = 'fold_to_one' | 'showdown';
+
+export type HandCompleteWinner = {
+  seatId: string;
+  amount: number;
+};
+
+export type ShownHoleFact = {
+  seatId: string;
+  hole: [Card, Card];
+};
+
+export type HandCompletePayload = {
+  kind: 'hand_complete';
+  reason: HandCompleteReason;
+  winners: HandCompleteWinner[];
+  shownHoles?: ShownHoleFact[];
+};
+
 export type MoveLogItem = {
   seq: number;
   seatId: string;
@@ -40,6 +59,18 @@ export function isActionPayload(payload: unknown): payload is ActionPayload {
   }
   const record = payload as Record<string, unknown>;
   return record.kind === 'action' && typeof record.action === 'object' && record.action !== null;
+}
+
+export function isHandCompletePayload(payload: unknown): payload is HandCompletePayload {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+  const record = payload as Record<string, unknown>;
+  return (
+    record.kind === 'hand_complete' &&
+    (record.reason === 'fold_to_one' || record.reason === 'showdown') &&
+    Array.isArray(record.winners)
+  );
 }
 
 export function isStreetDealPayload(payload: unknown): payload is StreetDealPayload {
@@ -81,6 +112,44 @@ export function buildStreetDealPayload(
   board: Card[],
 ): StreetDealPayload {
   return { kind: 'street_deal', street, board: [...board] };
+}
+
+export function buildHandCompletePayload(input: {
+  reason: HandCompleteReason;
+  winners: HandCompleteWinner[];
+  shownHoles?: ShownHoleFact[];
+}): HandCompletePayload {
+  const payload: HandCompletePayload = {
+    kind: 'hand_complete',
+    reason: input.reason,
+    winners: input.winners.map((winner) => ({
+      seatId: winner.seatId,
+      amount: winner.amount,
+    })),
+  };
+  if (input.reason === 'showdown' && input.shownHoles && input.shownHoles.length > 0) {
+    payload.shownHoles = input.shownHoles.map((shown) => ({
+      seatId: shown.seatId,
+      hole: [shown.hole[0], shown.hole[1]] as [Card, Card],
+    }));
+  }
+  return payload;
+}
+
+export function findLatestHandComplete(
+  moves: MoveLogItem[],
+): HandCompletePayload | undefined {
+  let latest: HandCompletePayload | undefined;
+  for (const item of moves) {
+    if (isHandCompletePayload(item.payload)) {
+      latest = item.payload;
+    }
+  }
+  return latest;
+}
+
+export function hasHandCompleteInActions(moves: MoveLogItem[]): boolean {
+  return moves.some((item) => isHandCompletePayload(item.payload));
 }
 
 export function findLatestStreetBoard(moves: MoveLogItem[]): Card[] | undefined {

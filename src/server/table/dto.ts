@@ -27,12 +27,27 @@ export function parseHoleView(value: unknown): HoleView | null {
 
 export type PublicTableSeat = { seatId: string; stack?: number };
 
+export type HandCompleteReason = 'fold_to_one' | 'showdown';
+
+export type HandCompleteWinner = {
+  seatId: string;
+  amount: number;
+};
+
+export type ShownHoleFact = {
+  seatId: string;
+  hole: [Card, Card];
+};
+
 export type PublicTable = {
   matchId: string;
   seats: PublicTableSeat[];
   currentSeat: string | null;
   pot?: number;
   board?: Card[];
+  completeReason?: HandCompleteReason;
+  winners?: HandCompleteWinner[];
+  shownHoles?: ShownHoleFact[];
 };
 
 export type SeatViewResponse = {
@@ -46,6 +61,9 @@ export type SeatTable = {
   currentSeat: string | null;
   pot?: number;
   board?: Card[];
+  completeReason?: HandCompleteReason;
+  winners?: HandCompleteWinner[];
+  shownHoles?: ShownHoleFact[];
   seatId: string;
   hole: [Card, Card] | null;
   legalActions?: LegalizedAction[];

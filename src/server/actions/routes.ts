@@ -89,6 +89,11 @@ export function createActionRoutes(
         case 'all_in_or_side_pot_unsupported':
         case 'already_complete':
         case 'illegal_turn':
+        case 'hand_not_ready':
+        case 'complete_failed':
+        case 'street_not_complete':
+        case 'cannot_advance':
+        case 'advance_failed':
           return result.error.response;
         case 'holes_not_dealt':
           return Response.json({ error: 'holes_not_dealt' }, { status: 400 });
