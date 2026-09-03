@@ -40,13 +40,3 @@ export function rosterSeatOnly<T extends { seatId: string; createdAt?: string }>
   }
   return result as T;
 }
-
-export function assertCreateResponseClean(body: Record<string, unknown>): void {
-  for (const key of Object.keys(body)) {
-    if (key !== 'seatId' && key !== 'currentSeat') {
-      if (IDENTITY_FIELD_DENYLIST.has(key)) {
-        delete body[key];
-      }
-    }
-  }
-}
