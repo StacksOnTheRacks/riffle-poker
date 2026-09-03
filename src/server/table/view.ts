@@ -17,10 +17,7 @@ export async function getSeatView(
 ): Promise<SeatViewResponse> {
   const getClient = deps.getClient ?? requireAuthenticatedTurnurClient;
   const client = await getClient();
-  const result = await client.match.view.get({
-    matchId: input.matchId,
-    seatId: input.seatId,
-  });
+  const result = await client.match.view.get(input.matchId, input.seatId);
 
   if (result.view === null || result.view === undefined) {
     return { seatId: input.seatId, view: null };

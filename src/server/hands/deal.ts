@@ -85,11 +85,7 @@ export async function dealHandForMatch(
 
   for (const seat of dealt.value.seats) {
     try {
-      await client.match.view.put({
-        matchId: input.matchId,
-        seatId: seat.seatId,
-        view: { hole: seat.hole },
-      });
+      await client.match.view.put(input.matchId, seat.seatId, { hole: seat.hole });
     } catch (error) {
       return {
         ok: false,

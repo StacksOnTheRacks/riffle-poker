@@ -1,4 +1,4 @@
-import type { Card } from '../../rules/types.js';
+import type { Card, LegalizedAction } from '../../rules/types.js';
 
 export type { Card };
 
@@ -25,10 +25,13 @@ export function parseHoleView(value: unknown): HoleView | null {
   return { hole: [hole[0], hole[1]] };
 }
 
+export type PublicTableSeat = { seatId: string; stack?: number };
+
 export type PublicTable = {
   matchId: string;
-  seats: { seatId: string }[];
+  seats: PublicTableSeat[];
   currentSeat: string | null;
+  pot?: number;
 };
 
 export type SeatViewResponse = {
@@ -38,10 +41,12 @@ export type SeatViewResponse = {
 
 export type SeatTable = {
   matchId: string;
-  seats: { seatId: string }[];
+  seats: PublicTableSeat[];
   currentSeat: string | null;
+  pot?: number;
   seatId: string;
   hole: [Card, Card] | null;
+  legalActions?: LegalizedAction[];
 };
 
 export const HOLE_FIELD_DENYLIST = [

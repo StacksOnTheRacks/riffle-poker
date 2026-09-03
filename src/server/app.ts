@@ -15,6 +15,8 @@ import {
 } from './seats/capability/routes.js';
 import { createSeatRoutes, type SeatRouteDeps } from './seats/routes.js';
 import { createHandRoutes, type HandRouteDeps } from './hands/routes.js';
+import { createActionRoutes, type ActionRouteStores } from './actions/routes.js';
+import type { SubmitActionDeps } from './actions/submit.js';
 import { createTableRoutes, type TableRouteDeps } from './table/routes.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {}
@@ -25,6 +27,7 @@ export interface AppOptions {
   seatDeps?: SeatRouteDeps;
   handDeps?: HandRouteDeps;
   tableDeps?: TableRouteDeps;
+  actionDeps?: SubmitActionDeps;
 }
 
 export function createApp(options: AppOptions) {
@@ -41,6 +44,10 @@ export function createApp(options: AppOptions) {
 
   app.route('/v1/bootstrap', createBootstrapRoutes(env, stores));
   app.route('/v1/seats', createSeatRoutes(env, options.seatDeps));
+  app.route(
+    '/v1/seats',
+    createActionRoutes(env, stores as ActionRouteStores, options.actionDeps),
+  );
   app.route('/v1/seats/capability', createSeatCapabilityRoutes(env, stores));
   app.route('/v1/hands', createHandRoutes(env, options.handDeps));
   app.route('/v1', createTableRoutes(env, stores, options.tableDeps));

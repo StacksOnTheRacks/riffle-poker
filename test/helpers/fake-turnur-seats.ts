@@ -7,26 +7,37 @@ import { TEST_TURNUR_GAME_ID } from './turnur-fixtures.js';
 export interface FakeSeatStore {
   seats: Map<string, Array<Record<string, unknown>>>;
   views: Map<string, Map<string, unknown>>;
+  moves: Map<string, Array<{ seq: number; seatId: string; payload: unknown; createdAt: string }>>;
+  currentSeat: Map<string, string | null>;
   seatCreateCalls: number;
   seatListCalls: number;
+  turnGetCalls: number;
   turnSetCalls: number;
   viewPutCalls: number;
   viewGetCalls: number;
   moveCreateCalls: number;
+  movesListCalls: number;
   viewPutBodies: Array<{ matchId: string; seatId: string; view: unknown }>;
+  moveCreateBodies: Array<{ matchId: string; seatId: string; payload: unknown }>;
+  moveCreateError?: TurnurApiError;
 }
 
 export function createFakeSeatStore(): FakeSeatStore {
   return {
     seats: new Map(),
     views: new Map(),
+    moves: new Map(),
+    currentSeat: new Map(),
     seatCreateCalls: 0,
     seatListCalls: 0,
+    turnGetCalls: 0,
     turnSetCalls: 0,
     viewPutCalls: 0,
     viewGetCalls: 0,
     moveCreateCalls: 0,
+    movesListCalls: 0,
     viewPutBodies: [],
+    moveCreateBodies: [],
   };
 }
 
@@ -38,6 +49,14 @@ function rosterForMatch(store: FakeSeatStore, matchId: string) {
   }));
 }
 
+function nextSeq(store: FakeSeatStore, matchId: string): number {
+  const items = store.moves.get(matchId) ?? [];
+  if (items.length === 0) {
+    return 1;
+  }
+  return Math.max(...items.map((item) => item.seq)) + 1;
+}
+
 export function createFakeTurnurClientWithSeats(
   store: FakeSeatStore,
   options: {
@@ -46,6 +65,7 @@ export function createFakeTurnurClientWithSeats(
     listError?: TurnurApiError;
     viewPutError?: TurnurApiError;
     viewGetError?: TurnurApiError;
+    moveCreateError?: TurnurApiError;
   } = {},
 ): TurnurClient {
   return {
@@ -77,7 +97,10 @@ export function createFakeTurnurClientWithSeats(
             holeCards: ['As', 'Kh'],
           });
           store.seats.set(matchId, roster);
-          return { seatId, currentSeat: null };
+          if (!store.currentSeat.has(matchId)) {
+            store.currentSeat.set(matchId, null);
+          }
+          return { seatId, currentSeat: store.currentSeat.get(matchId) ?? null };
         }),
         list: vi.fn(async (matchId: string) => {
           store.seatListCalls += 1;
@@ -86,52 +109,84 @@ export function createFakeTurnurClientWithSeats(
           }
           return {
             seats: rosterForMatch(store, matchId),
-            currentSeat: null,
+            currentSeat: store.currentSeat.get(matchId) ?? null,
           };
         }),
       },
       turn: {
-        get: vi.fn(),
-        set: vi.fn(async () => {
+        get: vi.fn(async (matchId: string) => {
+          store.turnGetCalls += 1;
+          return { currentSeat: store.currentSeat.get(matchId) ?? null };
+        }),
+        set: vi.fn(async (matchId: string, seatId: string) => {
           store.turnSetCalls += 1;
-          return { currentSeat: null };
+          store.currentSeat.set(matchId, seatId);
+          return { currentSeat: seatId };
         }),
       },
       move: {
-        create: vi.fn(async () => {
+        create: vi.fn(async (matchId: string, input: { seatId: string; payload: unknown }) => {
           store.moveCreateCalls += 1;
+          store.moveCreateBodies.push({
+            matchId,
+            seatId: input.seatId,
+            payload: input.payload,
+          });
+
+          const current = store.currentSeat.get(matchId) ?? null;
+          const error = options.moveCreateError ?? store.moveCreateError;
+          if (error) {
+            throw error;
+          }
+          if (current === null || current !== input.seatId) {
+            throw new TurnurApiError(409, 'illegal_turn');
+          }
+
+          const items = store.moves.get(matchId) ?? [];
+          const entry = {
+            seq: nextSeq(store, matchId),
+            seatId: input.seatId,
+            payload: input.payload,
+            createdAt: new Date().toISOString(),
+          };
+          items.push(entry);
+          store.moves.set(matchId, items);
+
           return {
-            seq: 1,
-            seatId: 'seat-1',
-            createdAt: '2026-01-01T00:00:00.000Z',
-            currentSeat: null,
+            seq: entry.seq,
+            seatId: input.seatId,
+            createdAt: entry.createdAt,
+            currentSeat: current,
           };
         }),
       },
       view: {
-        put: vi.fn(async (input: { matchId: string; seatId: string; view: unknown }) => {
+        put: vi.fn(async (matchId: string, seatId: string, view: unknown) => {
           store.viewPutCalls += 1;
-          store.viewPutBodies.push(input);
+          store.viewPutBodies.push({ matchId, seatId, view });
           if (options.viewPutError) {
             throw options.viewPutError;
           }
-          const matchViews = store.views.get(input.matchId) ?? new Map<string, unknown>();
-          matchViews.set(input.seatId, input.view);
-          store.views.set(input.matchId, matchViews);
-          return { seatId: input.seatId };
+          const matchViews = store.views.get(matchId) ?? new Map<string, unknown>();
+          matchViews.set(seatId, view);
+          store.views.set(matchId, matchViews);
+          return { seatId };
         }),
-        get: vi.fn(async (input: { matchId: string; seatId: string }) => {
+        get: vi.fn(async (matchId: string, seatId: string) => {
           store.viewGetCalls += 1;
           if (options.viewGetError) {
             throw options.viewGetError;
           }
-          const matchViews = store.views.get(input.matchId);
-          const view = matchViews?.get(input.seatId) ?? null;
-          return { seatId: input.seatId, view };
+          const matchViews = store.views.get(matchId);
+          const view = matchViews?.get(seatId) ?? null;
+          return { seatId, view };
         }),
       },
       moves: {
-        list: vi.fn(),
+        list: vi.fn(async (matchId: string) => {
+          store.movesListCalls += 1;
+          return { items: [...(store.moves.get(matchId) ?? [])] };
+        }),
       },
     },
   };
@@ -147,4 +202,6 @@ export function seedFakeSeats(
     createdAt: new Date().toISOString(),
   }));
   store.seats.set(matchId, roster);
+  store.currentSeat.set(matchId, null);
+  store.moves.set(matchId, []);
 }
