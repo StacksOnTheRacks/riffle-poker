@@ -1,0 +1,30 @@
+{
+  "name": "riffle-poker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "esbuild src/client/play.ts --bundle --outfile=public/play.js --format=esm --target=es2022 --loader:.css=css",
+    "build:server": "esbuild src/server/main.ts --bundle --outfile=dist/server/main.js --platform=node --format=esm --target=node22 --packages=external",
+    "dev": "tsx watch src/server/main.ts",
+    "start": "node dist/server/main.js",
+    "test": "npm run build:client && vitest run",
+    "test:watch": "npm run build:client && vitest"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "hono": "^4.7.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "esbuild": "^0.25.2",
+    "tsx": "^4.19.3",
+    "happy-dom": "^17.4.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}
