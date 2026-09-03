@@ -90,4 +90,28 @@ describe('Turnur SDK key leak prevention', () => {
       expect(contents).not.toMatch(/TURNUR_SDK_KEY/);
     }
   });
+
+  it('extends seat create/list source leak checks from issue #4', () => {
+    const seatDirs = [
+      join(projectRoot, 'src', 'server', 'seats'),
+    ];
+    const checked = new Set<string>();
+    for (const seatDir of seatDirs) {
+      for (const filePath of collectFiles(seatDir)) {
+        if (filePath.includes('/capability/') || checked.has(filePath)) {
+          continue;
+        }
+        checked.add(filePath);
+        const contents = readFileSync(filePath, 'utf8');
+        expect(contents).not.toMatch(/TURNUR_SDK_KEY/);
+        if (
+          !filePath.endsWith('create.ts') &&
+          !filePath.endsWith('list.ts') &&
+          !filePath.endsWith('errors.ts')
+        ) {
+          expect(contents).not.toMatch(/@turnur\/sdk/);
+        }
+      }
+    }
+  });
 });
