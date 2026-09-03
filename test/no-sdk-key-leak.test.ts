@@ -105,6 +105,8 @@ describe('Turnur SDK key leak prevention', () => {
           !filePath.endsWith('deal.ts') &&
           !filePath.endsWith('open.ts') &&
           !filePath.endsWith('submit.ts') &&
+          !filePath.endsWith('advance.ts') &&
+          !filePath.endsWith('shoe.ts') &&
           !filePath.endsWith('public.ts') &&
           !filePath.endsWith('view.ts') &&
           !filePath.endsWith('seat.ts') &&
@@ -121,8 +123,14 @@ describe('Turnur SDK key leak prevention', () => {
       expect(contents).not.toMatch(/from ['"].*\/rules\//);
     }
 
-    const actionsBar = readFileSync(join(projectRoot, 'src', 'client', 'actions-bar.ts'), 'utf8');
-    assertNoForbiddenPatterns('actions-bar.ts', actionsBar);
-    expect(actionsBar).not.toMatch(/from ['"].*\/rules\//);
+    const clientFiles = [
+      join(projectRoot, 'src', 'client', 'actions-bar.ts'),
+      join(projectRoot, 'src', 'client', 'board.ts'),
+    ];
+    for (const filePath of clientFiles) {
+      const contents = readFileSync(filePath, 'utf8');
+      assertNoForbiddenPatterns(filePath, contents);
+      expect(contents).not.toMatch(/from ['"].*\/rules\//);
+    }
   });
 });

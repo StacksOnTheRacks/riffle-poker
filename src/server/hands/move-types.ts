@@ -5,11 +5,18 @@ export type HandOpenPayload = {
   seats: { seatId: string; stack: number }[];
   buttonSeatId: string;
   blinds: { smallBlind: number; bigBlind: number };
+  shoeSeatId?: string;
 };
 
 export type ActionPayload = {
   kind: 'action';
   action: Action;
+};
+
+export type StreetDealPayload = {
+  kind: 'street_deal';
+  street: 'flop' | 'turn' | 'river';
+  board: Card[];
 };
 
 export type MoveLogItem = {
@@ -35,21 +42,82 @@ export function isActionPayload(payload: unknown): payload is ActionPayload {
   return record.kind === 'action' && typeof record.action === 'object' && record.action !== null;
 }
 
+export function isStreetDealPayload(payload: unknown): payload is StreetDealPayload {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+  const record = payload as Record<string, unknown>;
+  return (
+    record.kind === 'street_deal' &&
+    (record.street === 'flop' || record.street === 'turn' || record.street === 'river') &&
+    Array.isArray(record.board)
+  );
+}
+
 export function buildHandOpenPayload(input: {
   seats: { seatId: string; stack: number }[];
   buttonSeatId: string;
   blinds: { smallBlind: number; bigBlind: number };
+  shoeSeatId?: string;
 }): HandOpenPayload {
-  return {
+  const payload: HandOpenPayload = {
     kind: 'hand_open',
     seats: input.seats.map((seat) => ({ seatId: seat.seatId, stack: seat.stack })),
     buttonSeatId: input.buttonSeatId,
     blinds: { ...input.blinds },
   };
+  if (input.shoeSeatId) {
+    payload.shoeSeatId = input.shoeSeatId;
+  }
+  return payload;
 }
 
 export function buildActionPayload(action: Action): ActionPayload {
   return { kind: 'action', action };
+}
+
+export function buildStreetDealPayload(
+  street: 'flop' | 'turn' | 'river',
+  board: Card[],
+): StreetDealPayload {
+  return { kind: 'street_deal', street, board: [...board] };
+}
+
+export function findLatestStreetBoard(moves: MoveLogItem[]): Card[] | undefined {
+  let latest: Card[] | undefined;
+  for (const item of moves) {
+    if (isStreetDealPayload(item.payload)) {
+      latest = item.payload.board;
+    }
+  }
+  return latest;
+}
+
+export function hasStreetDealAfterLastAction(moves: MoveLogItem[]): boolean {
+  let lastActionIndex = -1;
+  for (let i = 0; i < moves.length; i += 1) {
+    if (isActionPayload(moves[i]?.payload)) {
+      lastActionIndex = i;
+    }
+  }
+  if (lastActionIndex === -1) {
+    return false;
+  }
+  for (let i = lastActionIndex + 1; i < moves.length; i += 1) {
+    if (isStreetDealPayload(moves[i]?.payload)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function lastActionSeatId(moves: MoveLogItem[]): string | null {
+  for (let i = moves.length - 1; i >= 0; i -= 1) {
+    if (isActionPayload(moves[i]?.payload)) {
+      return moves[i]!.seatId;
+    }
+  }
+  return null;
 }
 
 export const SYNTHETIC_HOLE_DECK: Card[] = [

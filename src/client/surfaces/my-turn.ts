@@ -4,6 +4,8 @@ import {
   renderPotAndStacks,
   type LegalActionOption,
 } from '../actions-bar.js';
+import { renderBoardArea } from '../board.js';
+import type { BoardCard } from '../board.js';
 
 export type HoleCard = `${string}`;
 
@@ -11,6 +13,8 @@ export interface MyTurnContext {
   matchId: string;
   seatId: string;
   hole: [HoleCard, HoleCard];
+  board?: BoardCard[];
+  previousBoardLength?: number;
   opponents?: Array<{ seatId: string; label: string; stack: string }>;
   pot?: number;
   stacks?: Array<{ seatId: string; stack: number }>;
@@ -33,6 +37,11 @@ export function renderMyTurn(root: HTMLElement, context: MyTurnContext): void {
   const felt = document.createElement('div');
   felt.className = 'table-felt';
   felt.setAttribute('aria-hidden', 'true');
+
+  renderBoardArea(felt, {
+    board: context.board,
+    previousBoardLength: context.previousBoardLength,
+  });
 
   const playerSeat = document.createElement('div');
   playerSeat.className = 'player-seat player-seat-you';

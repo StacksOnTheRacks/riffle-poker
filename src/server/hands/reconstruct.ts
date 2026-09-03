@@ -1,14 +1,22 @@
 import { applyAction } from '../../rules/apply.js';
 import {
   bigBlindSeatId,
+  firstToActPostflop,
   firstToActPreflop,
   getHandMeta,
   postBlind,
   seatIndex,
   smallBlindSeatId,
 } from '../../rules/state.js';
-import type { Action, Card, HandState, SeatState } from '../../rules/types.js';
-import { isActionPayload, type HandOpenPayload, type MoveLogItem } from './move-types.js';
+import type { Card, HandState, SeatState, Street } from '../../rules/types.js';
+import {
+  isActionPayload,
+  isStreetDealPayload,
+  type HandOpenPayload,
+  type MoveLogItem,
+  type StreetDealPayload,
+} from './move-types.js';
+import { cloneShoeView, type ShoeView } from './shoe.js';
 
 export type ReconstructFailure =
   | 'holes_not_dealt'
@@ -51,9 +59,101 @@ export function actionsAfterHandOpen(moves: MoveLogItem[]): MoveLogItem[] {
   return moves.slice(handOpenIndex + 1);
 }
 
+function expectedBoardLengthForStreet(street: Street): number | null {
+  switch (street) {
+    case 'flop':
+      return 3;
+    case 'turn':
+      return 4;
+    case 'river':
+      return 5;
+    default:
+      return null;
+  }
+}
+
+function expectedStreetFromBoardLength(length: number): Street | null {
+  if (length === 3) {
+    return 'flop';
+  }
+  if (length === 4) {
+    return 'turn';
+  }
+  if (length === 5) {
+    return 'river';
+  }
+  return null;
+}
+
+function applyStreetDealFromLog(
+  state: HandState,
+  payload: StreetDealPayload,
+  workingShoe: ShoeView | null,
+): ReconstructResult {
+  const expectedStreet = expectedStreetFromBoardLength(payload.board.length);
+  if (!expectedStreet || expectedStreet !== payload.street) {
+    return { ok: false, error: 'reconstruct_failed' };
+  }
+
+  const expectedLength = expectedBoardLengthForStreet(
+    state.street === 'preflop'
+      ? 'flop'
+      : state.street === 'flop'
+        ? 'turn'
+        : state.street === 'turn'
+          ? 'river'
+          : state.street,
+  );
+
+  if (state.street === 'river' || expectedLength === null) {
+    return { ok: false, error: 'reconstruct_failed' };
+  }
+
+  const drawCount = state.street === 'preflop' ? 3 : 1;
+
+  if (workingShoe) {
+    if (workingShoe.deckRemaining.length < drawCount + 1) {
+      return { ok: false, error: 'reconstruct_failed' };
+    }
+    workingShoe.burns.push(workingShoe.deckRemaining.shift()!);
+    const drawn: Card[] = [];
+    for (let i = 0; i < drawCount; i += 1) {
+      drawn.push(workingShoe.deckRemaining.shift()!);
+    }
+    const expectedBoard = [...state.board, ...drawn];
+    if (
+      expectedBoard.length !== payload.board.length ||
+      !expectedBoard.every((card, index) => card === payload.board[index])
+    ) {
+      return { ok: false, error: 'reconstruct_failed' };
+    }
+    state.deckRemaining = [...workingShoe.deckRemaining];
+    state.burns = [...workingShoe.burns];
+  }
+
+  state.board = [...payload.board];
+  state.street = payload.street;
+
+  for (const seat of state.seats) {
+    seat.streetCommitted = 0;
+  }
+  state.currentBet = 0;
+  state.lastRaiseSize = state.blinds.bigBlind;
+  state.phase = 'betting';
+
+  const meta = getHandMeta(state);
+  meta.actedThisStreet.clear();
+  meta.lastAggressorSeatId = null;
+
+  state.currentSeatId = firstToActPostflop(state);
+
+  return { ok: true, value: state };
+}
+
 function buildInitialState(
   handOpen: HandOpenPayload,
   holesBySeat: Map<string, [Card, Card]>,
+  shoe: ShoeView | null,
 ): ReconstructResult {
   const seatStates: SeatState[] = [];
 
@@ -83,8 +183,8 @@ function buildInitialState(
     pot: 0,
     currentBet: 0,
     lastRaiseSize: handOpen.blinds.bigBlind,
-    deckRemaining: [],
-    burns: [],
+    deckRemaining: shoe ? [...shoe.deckRemaining] : [],
+    burns: shoe ? [...shoe.burns] : [],
     winners: null,
     completeReason: null,
   };
@@ -116,8 +216,10 @@ export function reconstructHand(input: {
   handOpen: HandOpenPayload;
   actions: MoveLogItem[];
   holesBySeat: Map<string, [Card, Card]>;
+  shoe?: ShoeView | null;
 }): ReconstructResult {
-  const initial = buildInitialState(input.handOpen, input.holesBySeat);
+  const workingShoe = input.shoe ? cloneShoeView(input.shoe) : null;
+  const initial = buildInitialState(input.handOpen, input.holesBySeat, input.shoe ?? null);
   if (!initial.ok) {
     return initial;
   }
@@ -125,20 +227,31 @@ export function reconstructHand(input: {
   let state = initial.value;
 
   for (const item of input.actions) {
-    if (!isActionPayload(item.payload)) {
-      return { ok: false, error: 'reconstruct_failed' };
+    if (isActionPayload(item.payload)) {
+      const applied = applyAction(state, item.seatId, item.payload.action);
+      if (!applied.ok) {
+        return { ok: false, error: 'reconstruct_failed' };
+      }
+      state = applied.value;
+      continue;
     }
-    const applied = applyAction(state, item.seatId, item.payload.action);
-    if (!applied.ok) {
-      return { ok: false, error: 'reconstruct_failed' };
+
+    if (isStreetDealPayload(item.payload)) {
+      const applied = applyStreetDealFromLog(state, item.payload, workingShoe);
+      if (!applied.ok) {
+        return applied;
+      }
+      state = applied.value;
+      continue;
     }
-    state = applied.value;
+
+    return { ok: false, error: 'reconstruct_failed' };
   }
 
   return { ok: true, value: state };
 }
 
-export function parseActionBody(action: unknown): Action | null {
+export function parseActionBody(action: unknown): import('../../rules/types.js').Action | null {
   if (typeof action !== 'object' || action === null) {
     return null;
   }

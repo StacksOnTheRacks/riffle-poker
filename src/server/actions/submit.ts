@@ -10,7 +10,13 @@ import {
 import { mapTableTurnurError } from '../table/errors.js';
 import type { SeatTable } from '../table/dto.js';
 import { parseHoleView } from '../table/dto.js';
+import { loadShoeForHand } from '../table/seat.js';
+import { maybeAdvanceStreet } from '../hands/advance.js';
 import { buildActionPayload, type MoveLogItem } from '../hands/move-types.js';
+import {
+  hasStreetDealAfterLastAction,
+  lastActionSeatId,
+} from '../hands/move-types.js';
 import {
   actionsAfterHandOpen,
   findLatestHandOpen,
@@ -33,6 +39,7 @@ export interface SubmitActionDeps {
   legalizeFn?: typeof legalize;
   applyActionFn?: typeof applyAction;
   legalActionsFn?: typeof legalActions;
+  advanceStreetFn?: typeof import('../../rules/index.js').advanceStreet;
 }
 
 export type SubmitActionError =
@@ -47,7 +54,10 @@ export type SubmitActionError =
   | { kind: 'illegal_action'; response: Response }
   | { kind: 'all_in_or_side_pot_unsupported'; response: Response }
   | { kind: 'already_complete'; response: Response }
-  | { kind: 'illegal_turn'; response: Response };
+  | { kind: 'illegal_turn'; response: Response }
+  | { kind: 'street_not_complete'; response: Response }
+  | { kind: 'cannot_advance'; response: Response }
+  | { kind: 'advance_failed'; response: Response };
 
 function isTurnur409(error: unknown): boolean {
   return (
@@ -136,11 +146,96 @@ function projectSeatTable(
     hole,
   };
 
+  if (state.board.length >= 3) {
+    table.board = [...state.board];
+  }
+
   if (legalActionsList && legalActionsList.length > 0) {
     table.legalActions = legalActionsList;
   }
 
   return table;
+}
+
+function shouldAdvanceAfterAction(state: HandState): boolean {
+  return (
+    state.phase === 'street_complete' &&
+    (state.street === 'preflop' || state.street === 'flop' || state.street === 'turn')
+  );
+}
+
+function shouldHealStreet(state: HandState, actions: MoveLogItem[]): boolean {
+  if (!shouldAdvanceAfterAction(state)) {
+    return false;
+  }
+  return !hasStreetDealAfterLastAction(actions);
+}
+
+async function reloadHandState(
+  client: TurnurClient,
+  matchId: string,
+  handOpen: NonNullable<ReturnType<typeof findLatestHandOpen>>,
+  items: MoveLogItem[],
+): Promise<
+  | { ok: true; value: { state: HandState; holes: Map<string, [Card, Card]>; actions: MoveLogItem[] } }
+  | { ok: false; error: SubmitActionError }
+> {
+  const holes = await loadAllHoles(
+    client,
+    matchId,
+    handOpen.seats.map((seat) => seat.seatId),
+  );
+  if (!holes.ok) {
+    if (holes.error === 'holes_not_dealt') {
+      return { ok: false, error: { kind: 'holes_not_dealt' } };
+    }
+    return {
+      ok: false,
+      error: {
+        kind: 'invalid_view',
+        response: holes.response ?? Response.json({ error: 'invalid_view' }, { status: 502 }),
+      },
+    };
+  }
+
+  const roster = await client.match.seat.list(matchId);
+  const shoe = await loadShoeForHand(
+    client,
+    matchId,
+    handOpen,
+    roster.seats.map((seat) => seat.seatId),
+  );
+  if (!shoe.ok) {
+    return {
+      ok: false,
+      error: {
+        kind: 'reconstruct_failed',
+        response: Response.json({ error: 'reconstruct_failed' }, { status: 502 }),
+      },
+    };
+  }
+
+  const actions = actionsAfterHandOpen(items);
+  const reconstructed = reconstructHand({
+    handOpen,
+    actions,
+    holesBySeat: holes.value,
+    shoe: shoe.value,
+  });
+  if (!reconstructed.ok) {
+    return {
+      ok: false,
+      error: {
+        kind: 'reconstruct_failed',
+        response: Response.json({ error: 'reconstruct_failed' }, { status: 502 }),
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    value: { state: reconstructed.value, holes: holes.value, actions },
+  };
 }
 
 export async function submitAction(
@@ -218,41 +313,61 @@ export async function submitAction(
     };
   }
 
-  const holes = await loadAllHoles(
-    client,
-    input.matchId,
-    handOpen.seats.map((seat) => seat.seatId),
-  );
-  if (!holes.ok) {
-    if (holes.error === 'holes_not_dealt') {
-      return { ok: false, error: { kind: 'holes_not_dealt' } };
+  let loaded = await reloadHandState(client, input.matchId, handOpen, items);
+  if (!loaded.ok) {
+    return { ok: false, error: loaded.error };
+  }
+
+  let { state: reconstructedState, holes, actions } = loaded.value;
+
+  if (shouldHealStreet(reconstructedState, actions)) {
+    const healSeatId = lastActionSeatId(actions) ?? input.seatId;
+    const healed = await maybeAdvanceStreet({
+      matchId: input.matchId,
+      pathSeatId: healSeatId,
+      state: reconstructedState,
+      client,
+      deps: { advanceStreetFn: deps.advanceStreetFn },
+    });
+    if (!healed.ok) {
+      const err = healed.error;
+      if (err.kind === 'street_not_complete') {
+        return { ok: false, error: { kind: 'street_not_complete', response: err.response } };
+      }
+      if (err.kind === 'cannot_advance') {
+        return { ok: false, error: { kind: 'cannot_advance', response: err.response } };
+      }
+      if (err.kind === 'all_in_or_side_pot_unsupported') {
+        return {
+          ok: false,
+          error: { kind: 'all_in_or_side_pot_unsupported', response: err.response },
+        };
+      }
+      if (err.kind === 'advance_failed') {
+        return { ok: false, error: { kind: 'advance_failed', response: err.response } };
+      }
+      if (err.kind === 'illegal_turn') {
+        return { ok: false, error: { kind: 'illegal_turn', response: err.response } };
+      }
+      return { ok: false, error: { kind: 'turnur', response: err.response } };
     }
-    return {
-      ok: false,
-      error: {
-        kind: 'invalid_view',
-        response: holes.response ?? Response.json({ error: 'invalid_view' }, { status: 502 }),
-      },
-    };
+
+    const refreshedMoves = await client.match.moves.list(input.matchId);
+    loaded = await reloadHandState(
+      client,
+      input.matchId,
+      handOpen,
+      refreshedMoves.items as MoveLogItem[],
+    );
+    if (!loaded.ok) {
+      return { ok: false, error: loaded.error };
+    }
+    reconstructedState = loaded.value.state;
+    holes = loaded.value.holes;
+    actions = loaded.value.actions;
   }
 
-  const priorActions = actionsAfterHandOpen(items);
-  const reconstructed = reconstructHand({
-    handOpen,
-    actions: priorActions,
-    holesBySeat: holes.value,
-  });
-  if (!reconstructed.ok) {
-    return {
-      ok: false,
-      error: {
-        kind: 'reconstruct_failed',
-        response: Response.json({ error: 'reconstruct_failed' }, { status: 502 }),
-      },
-    };
-  }
-
-  const legalized = legalizeFn(reconstructed.value, input.seatId, action);
+  const legalized = legalizeFn(reconstructedState, input.seatId, action);
   if (!legalized.ok) {
     const mapped = mapRulesReject(legalized.error.code);
     if (mapped) {
@@ -260,7 +375,7 @@ export async function submitAction(
     }
   }
 
-  const nextStateResult = applyActionFn(reconstructed.value, input.seatId, action);
+  const nextStateResult = applyActionFn(reconstructedState, input.seatId, action);
   if (!nextStateResult.ok) {
     const mapped = mapRulesReject(nextStateResult.error.code);
     if (mapped) {
@@ -290,8 +405,43 @@ export async function submitAction(
     return { ok: false, error: { kind: 'turnur', response: mapTableTurnurError(error) } };
   }
 
-  const nextState = nextStateResult.value;
-  if (nextState.currentSeatId !== null) {
+  let nextState = nextStateResult.value;
+
+  if (shouldAdvanceAfterAction(nextState)) {
+    const advanced = await maybeAdvanceStreet({
+      matchId: input.matchId,
+      pathSeatId: input.seatId,
+      state: nextState,
+      client,
+      deps: { advanceStreetFn: deps.advanceStreetFn },
+    });
+    if (!advanced.ok) {
+      const err = advanced.error;
+      if (err.kind === 'illegal_turn') {
+        return { ok: false, error: { kind: 'illegal_turn', response: err.response } };
+      }
+      if (err.kind === 'all_in_or_side_pot_unsupported') {
+        return {
+          ok: false,
+          error: { kind: 'all_in_or_side_pot_unsupported', response: err.response },
+        };
+      }
+      if (err.kind === 'street_not_complete') {
+        return { ok: false, error: { kind: 'street_not_complete', response: err.response } };
+      }
+      if (err.kind === 'cannot_advance') {
+        return { ok: false, error: { kind: 'cannot_advance', response: err.response } };
+      }
+      if (err.kind === 'advance_failed') {
+        return { ok: false, error: { kind: 'advance_failed', response: err.response } };
+      }
+      return { ok: false, error: { kind: 'turnur', response: err.response } };
+    }
+    nextState = advanced.value;
+  } else if (
+    nextState.phase === 'betting' &&
+    nextState.currentSeatId !== null
+  ) {
     try {
       await client.match.turn.set(input.matchId, nextState.currentSeatId);
     } catch (error) {
@@ -310,7 +460,7 @@ export async function submitAction(
     }
   }
 
-  const ownHole = holes.value.get(input.seatId) ?? null;
+  const ownHole = holes.get(input.seatId) ?? null;
   const legal =
     nextState.phase === 'betting' && nextState.currentSeatId === input.seatId
       ? legalActionsFn(nextState, input.seatId)

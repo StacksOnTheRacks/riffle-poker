@@ -17,7 +17,7 @@ import {
   turnurUnauthenticatedResponse,
 } from './errors.js';
 import { getPublicTable } from './public.js';
-import { getSeatTable, InvalidViewError } from './seat.js';
+import { getSeatTable, InvalidViewError, ShoeSeatNotFoundError } from './seat.js';
 import { getSeatView } from './view.js';
 
 export const SEAT_CAPABILITY_HEADER = 'X-Riffle-Seat-Capability';
@@ -160,6 +160,9 @@ export function createTableRoutes(
       const table = await getSeatTable({ matchId, seatId }, { getClient });
       return noStoreJson(table, 200);
     } catch (error) {
+      if (error instanceof ShoeSeatNotFoundError) {
+        return Response.json({ error: 'seat_not_found' }, { status: 404 });
+      }
       if (error instanceof InvalidViewError) {
         return Response.json({ error: 'invalid_view' }, { status: 502 });
       }

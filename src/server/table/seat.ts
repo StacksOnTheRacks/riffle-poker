@@ -1,15 +1,16 @@
 import type { TurnurClient } from '@turnur/sdk';
 import { legalActions } from '../../rules/index.js';
 import { requireAuthenticatedTurnurClient } from '../turnur/session.js';
-import type { SeatTable } from './dto.js';
+import type { Card, SeatTable } from './dto.js';
 import { parseHoleView } from './dto.js';
 import type { MoveLogItem } from '../hands/move-types.js';
-import { syntheticHolesForSeats } from '../hands/move-types.js';
 import {
   actionsAfterHandOpen,
   findLatestHandOpen,
   reconstructHand,
 } from '../hands/reconstruct.js';
+import { findLatestStreetBoard, syntheticHolesForSeats } from '../hands/move-types.js';
+import { loadShoe, resolveShoeSeatId, filterPublicRosterSeats } from '../hands/shoe.js';
 
 export interface SeatTableInput {
   matchId: string;
@@ -20,6 +21,27 @@ export interface SeatTableDeps {
   getClient?: () => Promise<TurnurClient>;
 }
 
+export class ShoeSeatNotFoundError extends Error {
+  constructor() {
+    super('seat_not_found');
+    this.name = 'ShoeSeatNotFoundError';
+  }
+}
+
+function projectBoard(
+  actions: MoveLogItem[],
+  stateBoard: Card[],
+): Card[] | undefined {
+  const fromLog = findLatestStreetBoard(actions);
+  if (fromLog && fromLog.length > 0) {
+    return fromLog;
+  }
+  if (stateBoard.length >= 3) {
+    return stateBoard;
+  }
+  return undefined;
+}
+
 export async function getSeatTable(
   input: SeatTableInput,
   deps: SeatTableDeps = {},
@@ -27,13 +49,24 @@ export async function getSeatTable(
   const getClient = deps.getClient ?? requireAuthenticatedTurnurClient;
   const client = await getClient();
 
-  await client.match.seat.list(input.matchId);
+  const roster = await client.match.seat.list(input.matchId);
   const movesList = await client.match.moves.list(input.matchId);
   const items = movesList.items as MoveLogItem[];
   const handOpen = findLatestHandOpen(items);
 
+  if (handOpen) {
+    const shoeResolve = resolveShoeSeatId(
+      handOpen.shoeSeatId,
+      roster.seats.map((seat) => seat.seatId),
+      handOpen.seats.map((seat) => seat.seatId),
+    );
+    if (shoeResolve.ok && shoeResolve.shoeSeatId === input.seatId) {
+      throw new ShoeSeatNotFoundError();
+    }
+  }
+
   if (!handOpen) {
-    const roster = await client.match.seat.list(input.matchId);
+    const rosterBeforeOpen = filterPublicRosterSeats(roster.seats, null);
     const viewResult = await client.match.view.get(input.matchId, input.seatId);
     let hole: SeatTable['hole'] = null;
     if (viewResult.view !== null && viewResult.view !== undefined) {
@@ -42,7 +75,7 @@ export async function getSeatTable(
     }
     return {
       matchId: input.matchId,
-      seats: roster.seats.map((seat) => ({ seatId: seat.seatId })),
+      seats: rosterBeforeOpen.map((seat) => ({ seatId: seat.seatId })),
       currentSeat: roster.currentSeat,
       seatId: input.seatId,
       hole,
@@ -60,25 +93,27 @@ export async function getSeatTable(
     }
   }
 
+  const actions = actionsAfterHandOpen(items);
   const reconstructed = reconstructHand({
     handOpen,
-    actions: actionsAfterHandOpen(items),
+    actions,
     holesBySeat,
+    shoe: null,
   });
 
   if (!reconstructed.ok) {
-    const roster = await client.match.seat.list(input.matchId);
     return {
       matchId: input.matchId,
-      seats: roster.seats.map((seat) => ({ seatId: seat.seatId })),
+      seats: handOpen.seats.map((seat) => ({ seatId: seat.seatId })),
       currentSeat: roster.currentSeat,
       seatId: input.seatId,
-      hole: null,
+      hole: holesBySeat.get(input.seatId) ?? null,
     };
   }
 
   const state = reconstructed.value;
   const ownHole = holesBySeat.get(input.seatId) ?? null;
+  const board = projectBoard(actions, state.board);
   const table: SeatTable = {
     matchId: input.matchId,
     seats: state.seats.map((seat) => ({ seatId: seat.seatId, stack: seat.stack })),
@@ -87,12 +122,35 @@ export async function getSeatTable(
     seatId: input.seatId,
     hole: ownHole,
   };
+  if (board) {
+    table.board = board;
+  }
 
   if (state.phase === 'betting' && state.currentSeatId === input.seatId) {
     table.legalActions = legalActions(state, input.seatId);
   }
 
   return table;
+}
+
+export async function loadShoeForHand(
+  client: TurnurClient,
+  matchId: string,
+  handOpen: NonNullable<ReturnType<typeof findLatestHandOpen>>,
+  rosterSeatIds: string[],
+): Promise<
+  | { ok: true; value: import('../hands/shoe.js').ShoeView }
+  | { ok: false; error: 'invalid_shoe' | 'shoe_missing' | 'shoe_ambiguous' }
+> {
+  const shoeResolve = resolveShoeSeatId(
+    handOpen.shoeSeatId,
+    rosterSeatIds,
+    handOpen.seats.map((seat) => seat.seatId),
+  );
+  if (!shoeResolve.ok) {
+    return { ok: false, error: shoeResolve.error };
+  }
+  return loadShoe(client, matchId, shoeResolve.shoeSeatId);
 }
 
 export { InvalidViewError } from './view.js';
