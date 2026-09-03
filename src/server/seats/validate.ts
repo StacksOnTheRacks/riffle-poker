@@ -6,6 +6,14 @@ export function validateMatchId(value: unknown): string | undefined {
   return matchId;
 }
 
+export function validateSeatId(value: unknown): string | undefined {
+  const seatId = typeof value === 'string' ? value.trim() : '';
+  if (!seatId || seatId.length > 128) {
+    return undefined;
+  }
+  return seatId;
+}
+
 const IDENTITY_FIELD_DENYLIST = new Set([
   'playerId',
   'playerSubject',
