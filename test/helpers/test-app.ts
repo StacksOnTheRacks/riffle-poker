@@ -1,4 +1,5 @@
 import { createApp } from '../../src/server/app.js';
+import type { SeatRouteDeps } from '../../src/server/seats/routes.js';
 import { resetEnvCache } from '../../src/server/env.js';
 import {
   TEST_FRAME_ANCESTORS,
@@ -6,7 +7,11 @@ import {
   TEST_PUBLIC_ORIGIN,
 } from './fixtures.js';
 
-export function createTestApp() {
+export interface TestAppOptions {
+  seatDeps?: SeatRouteDeps;
+}
+
+export function createTestApp(options: TestAppOptions = {}) {
   resetEnvCache();
   return createApp({
     env: {
@@ -15,6 +20,7 @@ export function createTestApp() {
       listenPort: 3000,
       frameAncestors: TEST_FRAME_ANCESTORS,
     },
+    seatDeps: options.seatDeps,
   });
 }
 
