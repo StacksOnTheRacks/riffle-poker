@@ -110,6 +110,45 @@ body {
   box-shadow: inset 0 0 2rem rgba(0, 0, 0, 0.35);
 }
 
+.player-seat {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  bottom: 5.5rem;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.player-seat-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.hole-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hole-cards {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.hole-cards-empty {
+  width: 4.5rem;
+  height: 3.25rem;
+  border-radius: 0.35rem;
+  border: 2px dashed rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.2);
+}
+
 .table-header {
   position: relative;
   z-index: 1;
@@ -136,5 +175,14 @@ body {
 
   .table-felt {
     inset: 1rem 1rem 5.5rem;
+  }
+
+  .player-seat {
+    bottom: 4.75rem;
+  }
+
+  .hole-cards-empty {
+    width: 3.75rem;
+    height: 2.75rem;
   }
 }

@@ -128,6 +128,14 @@ describe('client bootstrap play flow', () => {
     expect(shell?.getAttribute('aria-label')).toBe('Poker table waiting for deal');
     expect(root.querySelector('.table-felt')).not.toBeNull();
     expect(root.textContent).toContain('Waiting for deal');
+
+    const holeArea = root.querySelector('.hole-area');
+    expect(holeArea?.getAttribute('aria-label')).toBe(
+      'Your hole cards, seat-private, empty',
+    );
+    expect(root.querySelector('.player-seat-label')?.textContent).toBe('YOU');
+    expect(root.querySelector('.hole-cards-empty')).not.toBeNull();
+    expect(root.querySelector('.hole-cards-empty')?.children.length).toBe(0);
   });
 
   it('embed-error uses alert semantics', () => {

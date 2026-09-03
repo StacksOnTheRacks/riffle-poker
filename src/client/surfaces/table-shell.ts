@@ -16,6 +16,25 @@ export function renderTableShell(root: HTMLElement, context: TableShellContext):
   felt.className = 'table-felt';
   felt.setAttribute('aria-hidden', 'true');
 
+  const playerSeat = document.createElement('div');
+  playerSeat.className = 'player-seat player-seat-you';
+
+  const seatLabel = document.createElement('span');
+  seatLabel.className = 'player-seat-label';
+  seatLabel.textContent = 'YOU';
+
+  const holeArea = document.createElement('div');
+  holeArea.className = 'hole-area';
+  holeArea.setAttribute('role', 'group');
+  holeArea.setAttribute('aria-label', 'Your hole cards, seat-private, empty');
+
+  const holeCards = document.createElement('div');
+  holeCards.className = 'hole-cards hole-cards-empty';
+  holeCards.setAttribute('aria-hidden', 'true');
+
+  holeArea.append(holeCards);
+  playerSeat.append(seatLabel, holeArea);
+
   const header = document.createElement('header');
   header.className = 'table-header';
 
@@ -34,6 +53,6 @@ export function renderTableShell(root: HTMLElement, context: TableShellContext):
   status.textContent = 'The host will start the hand soon.';
 
   header.append(title, match, status);
-  shell.append(felt, header);
+  shell.append(felt, playerSeat, header);
   root.append(shell);
 }
