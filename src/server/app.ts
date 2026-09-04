@@ -19,6 +19,7 @@ import { createHandRoutes, type HandRouteDeps } from './hands/routes.js';
 import { createActionRoutes, type ActionRouteStores } from './actions/routes.js';
 import type { SubmitActionDeps } from './actions/submit.js';
 import { createTableRoutes, type TableRouteDeps } from './table/routes.js';
+import { createLabRoutes, type LabRouteDeps } from './lab/routes.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {}
 
@@ -30,6 +31,7 @@ export interface AppOptions {
   handDeps?: HandRouteDeps;
   tableDeps?: TableRouteDeps;
   actionDeps?: SubmitActionDeps;
+  labDeps?: LabRouteDeps;
 }
 
 export function createApp(options: AppOptions) {
@@ -53,6 +55,13 @@ export function createApp(options: AppOptions) {
   );
   app.route('/v1/seats/capability', createSeatCapabilityRoutes(env, stores));
   app.route('/v1/hands', createHandRoutes(env, options.handDeps));
+  app.route(
+    '/v1/lab',
+    createLabRoutes(env, stores, {
+      getClient: options.labDeps?.getClient ?? options.matchDeps?.getClient ?? options.seatDeps?.getClient,
+      getRemoteAddress: options.labDeps?.getRemoteAddress,
+    }),
+  );
   app.route('/v1', createTableRoutes(env, stores, options.tableDeps));
   app.get('/play', createPlayPageHandler(env));
   app.get('/play.js', createPlayJsHandler());

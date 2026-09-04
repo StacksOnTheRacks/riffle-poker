@@ -7,6 +7,15 @@ export interface RiffleEnv {
   publicOrigin: string;
   listenPort: number;
   frameAncestors: string;
+  labEnabled: boolean;
+}
+
+export function parseLabEnabled(raw: string | undefined): boolean {
+  if (raw === undefined) {
+    return false;
+  }
+  const trimmed = raw.trim().toLowerCase();
+  return trimmed === '1' || trimmed === 'true';
 }
 
 let cachedEnv: RiffleEnv | undefined;
@@ -23,6 +32,9 @@ export function loadEnv(overrides?: Partial<RiffleEnv>): RiffleEnv {
     Number.parseInt(process.env.RIFFLE_LISTEN_PORT ?? '3000', 10);
   const frameAncestors =
     overrides?.frameAncestors ?? process.env.RIFFLE_FRAME_ANCESTORS ?? "'self'";
+  const labEnabled =
+    overrides?.labEnabled ??
+    parseLabEnabled(process.env.RIFFLE_LAB_ENABLED);
 
   if (!hostApiKey) {
     throw new Error('RIFFLE_HOST_API_KEY is required');
@@ -39,6 +51,7 @@ export function loadEnv(overrides?: Partial<RiffleEnv>): RiffleEnv {
     publicOrigin: publicOrigin.replace(/\/$/, ''),
     listenPort,
     frameAncestors,
+    labEnabled,
   };
 
   if (!overrides) {

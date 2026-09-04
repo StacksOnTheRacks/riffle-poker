@@ -6,13 +6,7 @@ import { requireHostAuth, unauthorizedResponse } from '../../host-auth.js';
 import { SeatCapabilityError } from './gate.js';
 import { requireSeatCapability } from './gate.js';
 import { SeatCapabilityLedger } from './ledger.js';
-import {
-  mintSeatCapabilityJti,
-  mintSeatCapabilityToken,
-  SEAT_CAPABILITY_TTL_SECONDS,
-  seatCapabilityExpiresAt,
-  seatCapabilityIssuedAt,
-} from './token.js';
+import { mintSeatCapability } from './mint.js';
 
 export interface SeatCapabilityStores {
   seatCapabilityLedger: SeatCapabilityLedger;
@@ -97,25 +91,16 @@ export function createSeatCapabilityRoutes(env: RiffleEnv, stores: SeatCapabilit
       return Response.json({ error: 'invalid_player_subject' }, { status: 400 });
     }
 
-    const token = mintSeatCapabilityToken();
-    const jti = mintSeatCapabilityJti();
-    const iat = seatCapabilityIssuedAt();
-    const exp = seatCapabilityExpiresAt(iat);
-
-    stores.seatCapabilityLedger.put(token, {
-      jti,
+    const minted = mintSeatCapability(stores.seatCapabilityLedger, {
       matchId,
       seatId,
       playerSubject,
-      iat,
-      exp,
-      purpose: 'seat',
     });
 
     return Response.json({
-      token,
-      expiresIn: SEAT_CAPABILITY_TTL_SECONDS,
-      jti,
+      token: minted.token,
+      expiresIn: minted.expiresIn,
+      jti: minted.jti,
     });
   });
 

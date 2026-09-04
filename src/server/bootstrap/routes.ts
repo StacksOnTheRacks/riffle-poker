@@ -9,14 +9,8 @@ import {
   buildPlaySessionCookie,
   parsePlaySessionCookie,
 } from './cookie.js';
-import {
-  BOOTSTRAP_TTL_SECONDS,
-  bootstrapExpiresAt,
-  buildPlayUrl,
-  isExpired,
-  mintJti,
-  mintOpaqueToken,
-} from './token.js';
+import { mintBootstrap } from './mint.js';
+import { isExpired } from './token.js';
 
 export interface BootstrapStores {
   bootstrapLedger: BootstrapLedger;
@@ -49,22 +43,13 @@ export function createBootstrapRoutes(env: RiffleEnv, stores: BootstrapStores) {
       );
     }
 
-    const token = mintOpaqueToken();
-    const jti = mintJti();
-    const expiresAt = bootstrapExpiresAt();
-
-    stores.bootstrapLedger.put(token, {
-      matchId,
-      jti,
-      expiresAt,
-      used: false,
-    });
+    const minted = mintBootstrap(env, stores.bootstrapLedger, { matchId });
 
     return Response.json({
-      token,
-      playUrl: buildPlayUrl(env.publicOrigin, token),
-      expiresIn: BOOTSTRAP_TTL_SECONDS,
-      jti,
+      token: minted.token,
+      playUrl: minted.playUrl,
+      expiresIn: minted.expiresIn,
+      jti: minted.jti,
     });
   });
 
