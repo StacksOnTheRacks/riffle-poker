@@ -1,6 +1,7 @@
 import { createApp } from '../../src/server/app.js';
 import type { HandRouteDeps } from '../../src/server/hands/routes.js';
 import type { SubmitActionDeps } from '../../src/server/actions/submit.js';
+import type { LabRouteDeps } from '../../src/server/lab/routes.js';
 import type { MatchRouteDeps } from '../../src/server/matches/routes.js';
 import type { SeatRouteDeps } from '../../src/server/seats/routes.js';
 import type { TableRouteDeps } from '../../src/server/table/routes.js';
@@ -17,6 +18,8 @@ export interface TestAppOptions {
   handDeps?: HandRouteDeps;
   tableDeps?: TableRouteDeps;
   actionDeps?: SubmitActionDeps;
+  labDeps?: LabRouteDeps;
+  labEnabled?: boolean;
 }
 
 export function createTestApp(options: TestAppOptions = {}) {
@@ -27,12 +30,14 @@ export function createTestApp(options: TestAppOptions = {}) {
       publicOrigin: TEST_PUBLIC_ORIGIN,
       listenPort: 3000,
       frameAncestors: TEST_FRAME_ANCESTORS,
+      labEnabled: options.labEnabled ?? false,
     },
     matchDeps: options.matchDeps,
     seatDeps: options.seatDeps,
     handDeps: options.handDeps,
     tableDeps: options.tableDeps,
     actionDeps: options.actionDeps,
+    labDeps: options.labDeps,
   });
 }
 
