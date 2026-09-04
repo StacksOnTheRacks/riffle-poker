@@ -20,6 +20,11 @@ import { createActionRoutes, type ActionRouteStores } from './actions/routes.js'
 import type { SubmitActionDeps } from './actions/submit.js';
 import { createTableRoutes, type TableRouteDeps } from './table/routes.js';
 import { createLabRoutes, type LabRouteDeps } from './lab/routes.js';
+import {
+  createLabCssHandler,
+  createLabJsHandler,
+  createLabPageHandler,
+} from './lab/page.js';
 import { createLabSessionStore, type LabSessionStore } from './lab/session-store.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {
@@ -77,6 +82,9 @@ export function createApp(options: AppOptions) {
   app.get('/play', createPlayPageHandler(env));
   app.get('/play.js', createPlayJsHandler());
   app.get('/play.css', createPlayCssHandler());
+  app.get('/lab', createLabPageHandler(env));
+  app.get('/lab.js', createLabJsHandler());
+  app.get('/lab.css', createLabCssHandler());
 
   return { app, stores };
 }

@@ -6,6 +6,8 @@ const projectRoot = join(import.meta.dirname, '..');
 const bundlePaths = [
   join(projectRoot, 'public', 'play.js'),
   join(projectRoot, 'public', 'play.css'),
+  join(projectRoot, 'public', 'lab.js'),
+  join(projectRoot, 'public', 'lab.css'),
 ];
 
 const forbiddenPatterns = [

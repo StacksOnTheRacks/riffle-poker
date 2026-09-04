@@ -79,3 +79,15 @@ export function readPlayJs(): string {
 export function readPlayCss(): string {
   return readFileSync(join(projectRoot, 'public', 'play.css'), 'utf8');
 }
+
+export function readLabHtml(): string {
+  return readFileSync(join(projectRoot, 'public', 'lab.html'), 'utf8');
+}
+
+export function readLabJs(): string {
+  return readFileSync(join(projectRoot, 'public', 'lab.js'), 'utf8');
+}
+
+export function readLabCss(): string {
+  return readFileSync(join(projectRoot, 'public', 'lab.css'), 'utf8');
+}
