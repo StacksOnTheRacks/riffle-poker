@@ -1,4 +1,5 @@
 import './styles.css';
+import { acceptSeatCapabilityPostMessage } from './seat-capability.js';
 import { renderEmbedError, type EmbedErrorReason } from './surfaces/embed-error.js';
 import { renderLoading } from './surfaces/loading.js';
 import { renderTableShell } from './surfaces/table-shell.js';
@@ -97,6 +98,7 @@ export function rejectPostMessageBootstrap(): void {
 
 export async function bootstrapPlay(root: HTMLElement): Promise<void> {
   rejectPostMessageBootstrap();
+  acceptSeatCapabilityPostMessage();
   renderLoading(root);
 
   const token = parseBootstrapTokenFromHash(window.location.hash);

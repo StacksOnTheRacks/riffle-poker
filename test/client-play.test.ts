@@ -120,6 +120,52 @@ describe('client bootstrap play flow', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('mixed bootstrap keys with capability are ignored and do not redeem', async () => {
+    const root = document.getElementById('app')!;
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/v1/table/seats/me')) {
+        return new Response('{}', { status: 200 });
+      }
+      if (url.endsWith('/v1/bootstrap/redeem') && init?.method === 'POST') {
+        return Response.json({ matchId: TEST_MATCH_ID, bound: true });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    rejectPostMessageBootstrap();
+    const { acceptSeatCapabilityPostMessage, seatScopedFetch, SEAT_CAPABILITY_HEADER } =
+      await import('../src/client/seat-capability.js');
+    acceptSeatCapabilityPostMessage();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: {
+          type: 'riffle.seatCapability',
+          capability: 'e'.repeat(64),
+          bootstrapToken: 'via-post-message',
+        },
+      }),
+    );
+
+    await seatScopedFetch('/v1/table/seats/me');
+    const seatFetchInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(
+      seatFetchInit?.headers
+        ? new Headers(seatFetchInit.headers).get(SEAT_CAPABILITY_HEADER)
+        : null,
+    ).toBeNull();
+
+    window.location.hash = '#bt=hash-only-token';
+    await bootstrapPlay(root);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/bootstrap/redeem'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('table shell includes waiting-for-deal chrome and a11y labels', () => {
     const root = document.getElementById('app')!;
     renderTableShell(root, { matchId: TEST_MATCH_ID });
