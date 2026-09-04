@@ -13,6 +13,7 @@ import {
   createSeatCapabilityStores,
   type SeatCapabilityStores,
 } from './seats/capability/routes.js';
+import { createMatchRoutes, type MatchRouteDeps } from './matches/routes.js';
 import { createSeatRoutes, type SeatRouteDeps } from './seats/routes.js';
 import { createHandRoutes, type HandRouteDeps } from './hands/routes.js';
 import { createActionRoutes, type ActionRouteStores } from './actions/routes.js';
@@ -24,6 +25,7 @@ export interface AppStores extends BootstrapStores, SeatCapabilityStores {}
 export interface AppOptions {
   env: RiffleEnv;
   stores?: Partial<AppStores>;
+  matchDeps?: MatchRouteDeps;
   seatDeps?: SeatRouteDeps;
   handDeps?: HandRouteDeps;
   tableDeps?: TableRouteDeps;
@@ -43,6 +45,7 @@ export function createApp(options: AppOptions) {
   const app = new Hono();
 
   app.route('/v1/bootstrap', createBootstrapRoutes(env, stores));
+  app.route('/v1/matches', createMatchRoutes(env, options.matchDeps));
   app.route('/v1/seats', createSeatRoutes(env, options.seatDeps));
   app.route(
     '/v1/seats',

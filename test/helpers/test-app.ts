@@ -1,6 +1,7 @@
 import { createApp } from '../../src/server/app.js';
 import type { HandRouteDeps } from '../../src/server/hands/routes.js';
 import type { SubmitActionDeps } from '../../src/server/actions/submit.js';
+import type { MatchRouteDeps } from '../../src/server/matches/routes.js';
 import type { SeatRouteDeps } from '../../src/server/seats/routes.js';
 import type { TableRouteDeps } from '../../src/server/table/routes.js';
 import { resetEnvCache } from '../../src/server/env.js';
@@ -11,6 +12,7 @@ import {
 } from './fixtures.js';
 
 export interface TestAppOptions {
+  matchDeps?: MatchRouteDeps;
   seatDeps?: SeatRouteDeps;
   handDeps?: HandRouteDeps;
   tableDeps?: TableRouteDeps;
@@ -26,6 +28,7 @@ export function createTestApp(options: TestAppOptions = {}) {
       listenPort: 3000,
       frameAncestors: TEST_FRAME_ANCESTORS,
     },
+    matchDeps: options.matchDeps,
     seatDeps: options.seatDeps,
     handDeps: options.handDeps,
     tableDeps: options.tableDeps,
