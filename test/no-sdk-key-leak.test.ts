@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readPlayCss, readPlayHtml, readPlayJs } from '../src/server/env.js';
+import { readPlayCss, readPlayHtml, readPlayJs, readLabCss, readLabHtml, readLabJs } from '../src/server/env.js';
 import { TEST_TURNUR_SDK_KEY } from './helpers/turnur-fixtures.js';
 
 const projectRoot = join(import.meta.dirname, '..');
@@ -42,8 +42,17 @@ describe('Turnur SDK key leak prevention', () => {
     assertNoForbiddenPatterns('play.css', readPlayCss());
   });
 
+  it('does not expose Turnur credentials in built lab bundles', () => {
+    assertNoForbiddenPatterns('lab.js', readLabJs());
+    assertNoForbiddenPatterns('lab.css', readLabCss());
+  });
+
   it('does not expose Turnur credentials in play HTML', () => {
     assertNoForbiddenPatterns('play.html', readPlayHtml());
+  });
+
+  it('does not expose Turnur credentials in lab HTML', () => {
+    assertNoForbiddenPatterns('lab.html', readLabHtml());
   });
 
   it('does not expose Turnur credentials in client source files', () => {

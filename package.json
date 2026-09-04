@@ -9,7 +9,7 @@
   "scripts": {
     "build": "npm run build:vendor && npm run build:client && npm run build:server",
     "build:vendor": "npm run build --prefix vendor/turnur-sdk",
-    "build:client": "esbuild src/client/play.ts --bundle --outfile=public/play.js --format=esm --target=es2022 --loader:.css=css",
+    "build:client": "esbuild src/client/play.ts --bundle --outfile=public/play.js --format=esm --target=es2022 --loader:.css=css && esbuild src/client/lab.ts --bundle --outfile=public/lab.js --format=esm --target=es2022 --loader:.css=css",
     "build:server": "esbuild src/server/main.ts --bundle --outfile=dist/server/main.js --platform=node --format=esm --target=node22 --packages=external",
     "dev": "tsx watch src/server/main.ts",
     "postinstall": "npm run build:vendor",

@@ -2,5 +2,7 @@ node_modules/
 dist/
 public/play.js
 public/play.css
+public/lab.js
+public/lab.css
 .env
 *.log
