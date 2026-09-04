@@ -20,8 +20,11 @@ import { createActionRoutes, type ActionRouteStores } from './actions/routes.js'
 import type { SubmitActionDeps } from './actions/submit.js';
 import { createTableRoutes, type TableRouteDeps } from './table/routes.js';
 import { createLabRoutes, type LabRouteDeps } from './lab/routes.js';
+import { createLabSessionStore, type LabSessionStore } from './lab/session-store.js';
 
-export interface AppStores extends BootstrapStores, SeatCapabilityStores {}
+export interface AppStores extends BootstrapStores, SeatCapabilityStores {
+  labSessionStore: LabSessionStore;
+}
 
 export interface AppOptions {
   env: RiffleEnv;
@@ -38,9 +41,11 @@ export function createApp(options: AppOptions) {
   const { env } = options;
   const bootstrapStores = createBootstrapStores();
   const seatCapabilityStores = createSeatCapabilityStores(bootstrapStores.playSessionStore);
+  const labSessionStore = options.stores?.labSessionStore ?? createLabSessionStore();
   const stores: AppStores = {
     ...bootstrapStores,
     ...seatCapabilityStores,
+    labSessionStore,
     ...options.stores,
   };
 
@@ -58,7 +63,13 @@ export function createApp(options: AppOptions) {
   app.route(
     '/v1/lab',
     createLabRoutes(env, stores, {
-      getClient: options.labDeps?.getClient ?? options.matchDeps?.getClient ?? options.seatDeps?.getClient,
+      getClient:
+        options.labDeps?.getClient ??
+        options.handDeps?.getClient ??
+        options.matchDeps?.getClient ??
+        options.seatDeps?.getClient,
+      dealHandFn: options.labDeps?.dealHandFn ?? options.handDeps?.dealHandFn,
+      rng: options.labDeps?.rng ?? options.handDeps?.rng,
       getRemoteAddress: options.labDeps?.getRemoteAddress,
     }),
   );
