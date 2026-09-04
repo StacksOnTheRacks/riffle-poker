@@ -9,6 +9,7 @@ export interface FakeSeatStore {
   views: Map<string, Map<string, unknown>>;
   moves: Map<string, Array<{ seq: number; seatId: string; payload: unknown; createdAt: string }>>;
   currentSeat: Map<string, string | null>;
+  matchCreateCalls: number;
   seatCreateCalls: number;
   seatListCalls: number;
   turnGetCalls: number;
@@ -28,6 +29,7 @@ export function createFakeSeatStore(): FakeSeatStore {
     views: new Map(),
     moves: new Map(),
     currentSeat: new Map(),
+    matchCreateCalls: 0,
     seatCreateCalls: 0,
     seatListCalls: 0,
     turnGetCalls: 0,
@@ -78,7 +80,14 @@ export function createFakeTurnurClientWithSeats(
       }),
     },
     match: {
-      create: vi.fn(),
+      create: vi.fn(async () => {
+        store.matchCreateCalls += 1;
+        const matchId = randomUUID();
+        store.seats.set(matchId, []);
+        store.currentSeat.set(matchId, null);
+        store.moves.set(matchId, []);
+        return { matchId };
+      }),
       get: vi.fn(),
       seat: {
         create: vi.fn(async (matchId: string) => {
