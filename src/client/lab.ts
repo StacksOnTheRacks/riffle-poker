@@ -1,5 +1,9 @@
 import './lab-styles.css';
 import { postSeatCapabilityToIframe } from './lab/post-capability.js';
+import {
+  isTableChangedMessage,
+  postTableRefreshToIframe,
+} from './table-refresh.js';
 import { renderLabHarness } from './lab/render.js';
 import type { LabSessionAttach, LabState } from './lab/states.js';
 import { LAB_STATE_ANNOUNCEMENTS } from './lab/states.js';
@@ -11,6 +15,7 @@ let currentState: LabState = 'lab-idle';
 let sessionAttach: LabSessionAttach | undefined;
 const deliveredCapabilities = new Set<string>();
 let pendingLoads = 0;
+let tableChangedListenerBound = false;
 
 function getRoot(): HTMLElement {
   const root = document.getElementById('lab-app');
@@ -84,6 +89,31 @@ function promoteToTwoSeats(root: HTMLElement): void {
   if (startButton) {
     startButton.disabled = true;
   }
+}
+
+function refreshBothSeatIframes(root: HTMLElement): void {
+  const [iframe1, iframe2] = getSeatIframes(root);
+  postTableRefreshToIframe(iframe1);
+  postTableRefreshToIframe(iframe2);
+}
+
+function acceptTableChangedFromSeats(): void {
+  if (tableChangedListenerBound) {
+    return;
+  }
+  tableChangedListenerBound = true;
+  window.addEventListener('message', (event) => {
+    if (!event.origin || event.origin !== window.location.origin) {
+      return;
+    }
+    if (!isTableChangedMessage(event.data)) {
+      return;
+    }
+    if (currentState !== 'lab-two-seats') {
+      return;
+    }
+    refreshBothSeatIframes(getRoot());
+  });
 }
 
 function attachIframeLoadHandlers(root: HTMLElement, attach: LabSessionAttach): void {
@@ -182,6 +212,8 @@ export async function dealHand(): Promise<void> {
       return;
     }
 
+    refreshBothSeatIframes(getRoot());
+
     if (dealButton) {
       dealButton.disabled = false;
     }
@@ -197,6 +229,7 @@ export async function dealHand(): Promise<void> {
 export function bootstrapLabHarness(): void {
   const root = getRoot();
   root.addEventListener('click', handleControlClick);
+  acceptTableChangedFromSeats();
   clearSessionMemory();
   setState('lab-idle');
 }

@@ -10,6 +10,7 @@ import {
 } from '../src/client/seat-capability.js';
 import { postSeatCapabilityToIframe } from '../src/client/lab/post-capability.js';
 import { bootstrapLabHarness, dealHand, startSession } from '../src/client/lab.js';
+import { TABLE_CHANGED_MESSAGE_TYPE, TABLE_REFRESH_MESSAGE_TYPE } from '../src/client/table-refresh.js';
 import { TEST_MATCH_ID, TEST_PUBLIC_ORIGIN } from './helpers/fixtures.js';
 import * as bootstrapMint from '../src/server/bootstrap/mint.js';
 import * as capabilityMint from '../src/server/seats/capability/mint.js';
@@ -230,6 +231,46 @@ describe('lab page harness', () => {
         body: JSON.stringify({ matchId: TEST_MATCH_ID }),
       }),
     );
+  });
+
+  it('rebroadcasts a seat tableChanged message as tableRefresh to both iframes', async () => {
+    const playUrl1 = `${TEST_PUBLIC_ORIGIN}/play#bt=token-one`;
+    const playUrl2 = `${TEST_PUBLIC_ORIGIN}/play#bt=token-two`;
+    mockSessionResponse([
+      { seatId: 'seat-1', playUrl: playUrl1, capabilityToken: CAP_A },
+      { seatId: 'seat-2', playUrl: playUrl2, capabilityToken: CAP_B },
+    ]);
+
+    bootstrapLabHarness();
+
+    const postMessageSpies: Array<ReturnType<typeof vi.fn>> = [];
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string, options?: ElementCreationOptions) => {
+      const element = originalCreateElement(tagName, options);
+      if (tagName.toLowerCase() === 'iframe') {
+        const postMessage = vi.fn();
+        postMessageSpies.push(postMessage);
+        Object.defineProperty(element, 'contentWindow', {
+          configurable: true,
+          get: () => ({ postMessage }) as unknown as Window,
+        });
+        queueMicrotask(() => element.dispatchEvent(new Event('load')));
+      }
+      return element;
+    });
+
+    await startSession();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: { type: TABLE_CHANGED_MESSAGE_TYPE },
+      }),
+    );
+
+    const refreshCalls = postMessageSpies.flatMap((spy) =>
+      spy.mock.calls.filter((call) => call[0]?.type === TABLE_REFRESH_MESSAGE_TYPE),
+    );
+    expect(refreshCalls).toHaveLength(2);
   });
 });
 

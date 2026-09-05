@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as bootstrapMint from '../src/server/bootstrap/mint.js';
 import * as dealModule from '../src/server/hands/deal.js';
 import * as openModule from '../src/server/hands/open.js';
-import { parseLabEnabled } from '../src/server/env.js';
+import { normalizeFrameAncestors, parseLabEnabled } from '../src/server/env.js';
 import * as capabilityMint from '../src/server/seats/capability/mint.js';
 import {
   createFakeSeatStore,
@@ -221,6 +221,16 @@ describe('POST /v1/lab/session', () => {
 
     expect(response.status).toBe(201);
     expect(store.matchCreateCalls).toBe(1);
+  });
+});
+
+describe('normalizeFrameAncestors', () => {
+  it('quotes bare self so CSP frame-ancestors is valid', () => {
+    expect(normalizeFrameAncestors('self')).toBe("'self'");
+    expect(normalizeFrameAncestors("'self'")).toBe("'self'");
+    expect(normalizeFrameAncestors("self https://host.example")).toBe(
+      "'self' https://host.example",
+    );
   });
 });
 

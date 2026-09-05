@@ -1,20 +1,32 @@
 // @vitest-environment happy-dom
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bootstrapPlay,
   parseBootstrapTokenFromHash,
+  refreshPlayTable,
   rejectPostMessageBootstrap,
+  resetPlayBindings,
   stripBootstrapHash,
 } from '../src/client/play.js';
+import { acceptSeatCapabilityPostMessage, SEAT_CAPABILITY_MESSAGE_TYPE } from '../src/client/seat-capability.js';
 import { renderEmbedError } from '../src/client/surfaces/embed-error.js';
 import { renderTableShell } from '../src/client/surfaces/table-shell.js';
+import { TABLE_CHANGED_MESSAGE_TYPE } from '../src/client/table-refresh.js';
 import { TEST_MATCH_ID } from './helpers/fixtures.js';
 
 describe('client bootstrap play flow', () => {
   beforeEach(() => {
     document.body.innerHTML = '<main id="app"></main>';
     window.history.replaceState(null, '', '/play');
+    resetPlayBindings();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      value: window,
+    });
   });
 
   it('parses bootstrap token from hash fragment', () => {
@@ -190,5 +202,193 @@ describe('client bootstrap play flow', () => {
 
     const panel = root.querySelector('.surface-embed-error');
     expect(panel?.getAttribute('role')).toBe('alert');
+  });
+
+  it('table refresh after deal renders hand-in-progress with hole cards', async () => {
+    const root = document.getElementById('app')!;
+    acceptSeatCapabilityPostMessage();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: { type: SEAT_CAPABILITY_MESSAGE_TYPE, capability: 'a'.repeat(64) },
+      }),
+    );
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo) => {
+        const url = String(input);
+        if (url.startsWith('/v1/table?')) {
+          return Response.json({
+            matchId: TEST_MATCH_ID,
+            seats: [{ seatId: 'seat-1' }, { seatId: 'seat-2' }],
+            currentSeat: 'seat-1',
+            pot: 150,
+          });
+        }
+        if (url.includes('/v1/seats/seat-1/table')) {
+          return Response.json({
+            matchId: TEST_MATCH_ID,
+            seatId: 'seat-1',
+            hole: ['As', 'Kh'],
+            currentSeat: 'seat-1',
+            pot: 150,
+            seats: [
+              { seatId: 'seat-1', stack: 9950 },
+              { seatId: 'seat-2', stack: 9900 },
+            ],
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+
+    renderTableShell(root, { matchId: TEST_MATCH_ID });
+    await refreshPlayTable(root, TEST_MATCH_ID);
+
+    expect(root.dataset.surface).toBe('hand-in-progress');
+    expect(root.textContent).toContain('Hand in progress');
+    expect(root.textContent).toContain('As');
+    expect(root.textContent).toContain('Kh');
+    expect(root.querySelector('.actions-bar-disabled')).not.toBeNull();
+  });
+
+  it('table refresh on-turn renders operable Fold/Check/Bet controls', async () => {
+    const root = document.getElementById('app')!;
+    acceptSeatCapabilityPostMessage();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: { type: SEAT_CAPABILITY_MESSAGE_TYPE, capability: 'a'.repeat(64) },
+      }),
+    );
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo) => {
+        const url = String(input);
+        if (url.startsWith('/v1/table?')) {
+          return Response.json({
+            matchId: TEST_MATCH_ID,
+            seats: [{ seatId: 'seat-1' }, { seatId: 'seat-2' }],
+            currentSeat: 'seat-1',
+            pot: 150,
+          });
+        }
+        if (url.includes('/v1/seats/seat-1/table')) {
+          return Response.json({
+            matchId: TEST_MATCH_ID,
+            seatId: 'seat-1',
+            hole: ['As', 'Kh'],
+            currentSeat: 'seat-1',
+            pot: 150,
+            seats: [
+              { seatId: 'seat-1', stack: 9950 },
+              { seatId: 'seat-2', stack: 9900 },
+            ],
+            legalActions: [
+              { type: 'fold' },
+              { type: 'call', amount: 50 },
+              { type: 'raise', amount: 200 },
+            ],
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+
+    renderTableShell(root, { matchId: TEST_MATCH_ID });
+    await refreshPlayTable(root, TEST_MATCH_ID);
+
+    expect(root.dataset.surface).toBe('my-turn');
+    expect(root.textContent).toContain('Your turn');
+    expect(root.querySelector('.action-fold')?.textContent).toBe('Fold');
+    expect(root.querySelector('.action-check-call')?.textContent).toBe('Call');
+    expect(root.querySelector('.action-bet-raise')?.textContent).toBe('Raise');
+  });
+
+  it('submitting a legal action posts to the seat action route and notifies the parent', async () => {
+    const root = document.getElementById('app')!;
+    acceptSeatCapabilityPostMessage();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: { type: SEAT_CAPABILITY_MESSAGE_TYPE, capability: 'a'.repeat(64) },
+      }),
+    );
+
+    const parentPost = vi.fn();
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPost },
+    });
+
+    let submitted = false;
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/v1/table?')) {
+        return Response.json({
+          matchId: TEST_MATCH_ID,
+          seats: [{ seatId: 'seat-1' }, { seatId: 'seat-2' }],
+          currentSeat: submitted ? 'seat-2' : 'seat-1',
+          pot: 200,
+        });
+      }
+      if (url.includes('/v1/seats/seat-1/table')) {
+        return Response.json({
+          matchId: TEST_MATCH_ID,
+          seatId: 'seat-1',
+          hole: ['As', 'Kh'],
+          currentSeat: submitted ? 'seat-2' : 'seat-1',
+          pot: 200,
+          seats: [
+            { seatId: 'seat-1', stack: 9900 },
+            { seatId: 'seat-2', stack: 9900 },
+          ],
+          legalActions: submitted
+            ? undefined
+            : [{ type: 'fold' }, { type: 'call', amount: 50 }, { type: 'raise', amount: 200 }],
+        });
+      }
+      if (url.endsWith('/v1/seats/seat-1/actions') && init?.method === 'POST') {
+        submitted = true;
+        return Response.json({
+          matchId: TEST_MATCH_ID,
+          seatId: 'seat-1',
+          hole: ['As', 'Kh'],
+          currentSeat: 'seat-2',
+          pot: 200,
+          seats: [
+            { seatId: 'seat-1', stack: 9900 },
+            { seatId: 'seat-2', stack: 9900 },
+          ],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderTableShell(root, { matchId: TEST_MATCH_ID });
+    await refreshPlayTable(root, TEST_MATCH_ID);
+
+    const foldButton = root.querySelector('.action-fold') as HTMLButtonElement;
+    foldButton.click();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/v1/seats/seat-1/actions',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ matchId: TEST_MATCH_ID, action: { type: 'fold' } }),
+        }),
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(parentPost).toHaveBeenCalledWith(
+        { type: TABLE_CHANGED_MESSAGE_TYPE },
+        window.location.origin,
+      );
+    });
+    expect(root.dataset.surface).toBe('hand-in-progress');
   });
 });

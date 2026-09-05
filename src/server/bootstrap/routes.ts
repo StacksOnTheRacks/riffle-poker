@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { bootstrapError } from '../../shared/errors.js';
 import type { RiffleEnv } from '../env.js';
-import { readPlayCss, readPlayHtml, readPlayJs } from '../env.js';
+import { normalizeFrameAncestors, readPlayCss, readPlayHtml, readPlayJs } from '../env.js';
 import { requireHostAuth, unauthorizedResponse } from '../host-auth.js';
 import { BootstrapLedger } from './ledger.js';
 import { PlaySessionStore } from './play-session.js';
@@ -138,7 +138,7 @@ export function createPlayPageHandler(env: RiffleEnv) {
       `<script type="module" src="/play.js"></script>`,
     );
 
-    const csp = `frame-ancestors ${env.frameAncestors}; default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'`;
+    const csp = `frame-ancestors ${normalizeFrameAncestors(env.frameAncestors)}; default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'`;
 
     return c.html(html, 200, {
       'Content-Security-Policy': csp,
