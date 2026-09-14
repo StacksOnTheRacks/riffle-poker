@@ -1,5 +1,6 @@
 import './styles.css';
 import type { LegalActionOption } from './actions-bar.js';
+import { attachSharedPlay, parsePlayUrlMatchId } from './play-url.js';
 import { acceptSeatCapabilityPostMessage, seatScopedFetch } from './seat-capability.js';
 import { renderHandComplete, renderShowdown } from './hand-complete.js';
 import { renderEmbedError, type EmbedErrorReason } from './surfaces/embed-error.js';
@@ -320,6 +321,10 @@ export async function bootstrapPlay(root: HTMLElement): Promise<void> {
 if (typeof document !== 'undefined') {
   const root = document.getElementById('app');
   if (root) {
-    void bootstrapPlay(root);
+    if (parsePlayUrlMatchId(window.location.pathname) !== undefined) {
+      void attachSharedPlay(root);
+    } else {
+      void bootstrapPlay(root);
+    }
   }
 }

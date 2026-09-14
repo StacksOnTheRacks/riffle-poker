@@ -34,6 +34,10 @@ import {
   createIdentityJsHandler,
   createIdentityPageHandler,
 } from './identity/page.js';
+import {
+  createPlayUrlLookupRoutes,
+  createPlayUrlPageHandler,
+} from './play-url/index.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {
   labSessionStore: LabSessionStore;
@@ -94,6 +98,7 @@ export function createApp(options: AppOptions) {
   );
   app.route('/v1', createTableRoutes(env, stores, options.tableDeps));
   app.route('/v1/identity', createIdentityRoutes(env, { identityStore: stores.identityStore }));
+  app.route('/v1/play', createPlayUrlLookupRoutes({ matchStore: stores.matchStore }));
   app.get('/', createIdentityPageHandler(env));
   app.get('/sign-in', createIdentityPageHandler(env));
   app.get('/sign-up', createIdentityPageHandler(env));
@@ -102,6 +107,7 @@ export function createApp(options: AppOptions) {
   app.get('/play', createPlayPageHandler(env));
   app.get('/play.js', createPlayJsHandler());
   app.get('/play.css', createPlayCssHandler());
+  app.get('/play/:matchId', createPlayUrlPageHandler(env));
   app.get('/lab', createLabPageHandler(env));
   app.get('/lab.js', createLabJsHandler());
   app.get('/lab.css', createLabCssHandler());

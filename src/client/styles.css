@@ -92,11 +92,79 @@ body {
   color: var(--danger);
 }
 
-.surface-table-shell {
+html[data-embed='1'] .surface {
+  width: min(360px, 100%);
+  min-height: 640px;
+}
+
+html[data-embed='1'] #app {
+  padding: 0.5rem;
+}
+
+.surface-table-shell,
+.surface-unseated {
   position: relative;
   overflow: hidden;
   padding: 0;
   justify-content: flex-end;
+}
+
+.surface-unseated .unseated-street {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.unseated-seat-list {
+  position: absolute;
+  top: 2.5rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  z-index: 1;
+}
+
+.unseated-seat-label {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.unseated-pot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, 120%);
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  z-index: 1;
+}
+
+.unseated-footer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 1.25rem 1.5rem 1.75rem;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.unseated-heading {
+  font-size: clamp(1rem, 2vw, 1.35rem);
+}
+
+.unseated-sit-button {
+  min-width: 10rem;
 }
 
 .table-felt {
