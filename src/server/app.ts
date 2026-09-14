@@ -27,6 +27,7 @@ import {
 } from './lab/page.js';
 import { createLabSessionStore, type LabSessionStore } from './lab/session-store.js';
 import { createIdentityStore, type IdentityStore } from '../identity/store.js';
+import { createMatchStore, type MatchStore } from '../match-store/index.js';
 import { createIdentityRoutes } from './identity/routes.js';
 import {
   createIdentityCssHandler,
@@ -37,6 +38,7 @@ import {
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {
   labSessionStore: LabSessionStore;
   identityStore: IdentityStore;
+  matchStore: MatchStore;
 }
 
 export interface AppOptions {
@@ -56,11 +58,13 @@ export function createApp(options: AppOptions) {
   const seatCapabilityStores = createSeatCapabilityStores(bootstrapStores.playSessionStore);
   const labSessionStore = options.stores?.labSessionStore ?? createLabSessionStore();
   const identityStore = options.stores?.identityStore ?? createIdentityStore();
+  const matchStore = options.stores?.matchStore ?? createMatchStore();
   const stores: AppStores = {
     ...bootstrapStores,
     ...seatCapabilityStores,
     labSessionStore,
     identityStore,
+    matchStore,
     ...options.stores,
   };
 
