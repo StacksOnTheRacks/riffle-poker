@@ -110,3 +110,15 @@ export function readLabJs(): string {
 export function readLabCss(): string {
   return readFileSync(join(projectRoot, 'public', 'lab.css'), 'utf8');
 }
+
+export function readIdentityHtml(): string {
+  return readFileSync(join(projectRoot, 'public', 'identity.html'), 'utf8');
+}
+
+export function readIdentityJs(): string {
+  return readFileSync(join(projectRoot, 'public', 'identity.js'), 'utf8');
+}
+
+export function readIdentityCss(): string {
+  return readFileSync(join(projectRoot, 'public', 'identity.css'), 'utf8');
+}

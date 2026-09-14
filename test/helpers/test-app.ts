@@ -1,4 +1,4 @@
-import { createApp } from '../../src/server/app.js';
+import { createApp, type AppStores } from '../../src/server/app.js';
 import type { HandRouteDeps } from '../../src/server/hands/routes.js';
 import type { SubmitActionDeps } from '../../src/server/actions/submit.js';
 import type { LabRouteDeps } from '../../src/server/lab/routes.js';
@@ -13,6 +13,7 @@ import {
 } from './fixtures.js';
 
 export interface TestAppOptions {
+  stores?: Partial<AppStores>;
   matchDeps?: MatchRouteDeps;
   seatDeps?: SeatRouteDeps;
   handDeps?: HandRouteDeps;
@@ -32,6 +33,7 @@ export function createTestApp(options: TestAppOptions = {}) {
       frameAncestors: TEST_FRAME_ANCESTORS,
       labEnabled: options.labEnabled ?? false,
     },
+    stores: options.stores,
     matchDeps: options.matchDeps,
     seatDeps: options.seatDeps,
     handDeps: options.handDeps,

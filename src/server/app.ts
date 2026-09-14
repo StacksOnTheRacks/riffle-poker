@@ -26,9 +26,17 @@ import {
   createLabPageHandler,
 } from './lab/page.js';
 import { createLabSessionStore, type LabSessionStore } from './lab/session-store.js';
+import { createIdentityStore, type IdentityStore } from '../identity/store.js';
+import { createIdentityRoutes } from './identity/routes.js';
+import {
+  createIdentityCssHandler,
+  createIdentityJsHandler,
+  createIdentityPageHandler,
+} from './identity/page.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {
   labSessionStore: LabSessionStore;
+  identityStore: IdentityStore;
 }
 
 export interface AppOptions {
@@ -47,10 +55,12 @@ export function createApp(options: AppOptions) {
   const bootstrapStores = createBootstrapStores();
   const seatCapabilityStores = createSeatCapabilityStores(bootstrapStores.playSessionStore);
   const labSessionStore = options.stores?.labSessionStore ?? createLabSessionStore();
+  const identityStore = options.stores?.identityStore ?? createIdentityStore();
   const stores: AppStores = {
     ...bootstrapStores,
     ...seatCapabilityStores,
     labSessionStore,
+    identityStore,
     ...options.stores,
   };
 
@@ -79,6 +89,12 @@ export function createApp(options: AppOptions) {
     }),
   );
   app.route('/v1', createTableRoutes(env, stores, options.tableDeps));
+  app.route('/v1/identity', createIdentityRoutes(env, { identityStore: stores.identityStore }));
+  app.get('/', createIdentityPageHandler(env));
+  app.get('/sign-in', createIdentityPageHandler(env));
+  app.get('/sign-up', createIdentityPageHandler(env));
+  app.get('/identity.js', createIdentityJsHandler());
+  app.get('/identity.css', createIdentityCssHandler());
   app.get('/play', createPlayPageHandler(env));
   app.get('/play.js', createPlayJsHandler());
   app.get('/play.css', createPlayCssHandler());
