@@ -4,6 +4,7 @@ import {
   writeStoredSession,
   type StoredIdentitySession,
 } from './identity/session.js';
+import { openDisplayNameEditor } from './display-name.js';
 import { renderSitSubmitting } from './surfaces/sit-submitting.js';
 import { renderTableShell } from './surfaces/table-shell.js';
 import { renderUnseated, type PublicTableSeat } from './surfaces/unseated.js';
@@ -72,7 +73,27 @@ export async function handleSitAtTable(root: HTMLElement, matchId: string): Prom
   try {
     const response = await postSit(matchId);
     if (response.ok) {
-      renderTableShell(root, { matchId });
+      const body = (await response.json()) as SitResponse;
+      const shellContext = {
+        matchId: body.matchId,
+        seatId: body.seatId,
+        seats: body.seats,
+        onEditDisplayName: () => {
+          openDisplayNameEditor(root, {
+            matchId: body.matchId,
+            seatId: body.seatId,
+            seats: body.seats,
+            onEditDisplayName: () => {
+              openDisplayNameEditor(root, {
+                matchId: body.matchId,
+                seatId: body.seatId,
+                seats: body.seats,
+              });
+            },
+          });
+        },
+      };
+      renderTableShell(root, shellContext);
       return;
     }
 
