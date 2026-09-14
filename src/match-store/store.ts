@@ -142,6 +142,15 @@ export interface MatchStore {
     matchId: string,
     playerSubject: string,
   ): MatchStoreResult<{ seatId: string; created: boolean }>;
+  findSeatForPlayer(
+    matchId: string,
+    playerSubject: string,
+  ): MatchStoreResult<{ seatId: string }>;
+  setSeatDisplayName(
+    matchId: string,
+    seatId: string,
+    displayName: string,
+  ): MatchStoreResult<{ seatId: string; displayName: string }>;
   openHand(
     matchId: string,
     input?: { buttonSeatId?: string; rng?: Rng },
@@ -294,6 +303,30 @@ export function createMatchStore(): MatchStore {
 
         emptySeat.playerSubject = playerSubject;
         return { ok: true, value: { seatId: emptySeat.seatId, created: true } };
+      });
+    },
+
+    findSeatForPlayer(matchId, playerSubject) {
+      const record = getRecord(matchId);
+      if (!record) {
+        return fail('match_not_found', 404);
+      }
+      const seat = record.seats.find((entry) => entry.playerSubject === playerSubject);
+      if (!seat) {
+        return fail('not_seated', 403);
+      }
+      return { ok: true, value: { seatId: seat.seatId } };
+    },
+
+    setSeatDisplayName(matchId, seatId, displayName) {
+      return withWriteLock(matchId, (record) => {
+        const seat = record.seats.find((entry) => entry.seatId === seatId);
+        if (!seat) {
+          return fail('seat_not_found', 404);
+        }
+
+        seat.displayName = displayName;
+        return { ok: true, value: { seatId, displayName } };
       });
     },
 
