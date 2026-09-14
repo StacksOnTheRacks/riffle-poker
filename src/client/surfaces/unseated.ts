@@ -1,8 +1,24 @@
-export interface UnseatedContext {
-  matchId: string;
+export interface PublicTableSeat {
+  seatId: string;
+  playerSubject: string | null;
+  displayName: string | null;
+  stack: number;
 }
 
-const OPEN_SEAT_LABELS = ['Seat 1 · open', 'Seat 2 · open', 'Seat 3 · open'];
+export interface UnseatedContext {
+  matchId: string;
+  seats: PublicTableSeat[];
+  sitFailed?: boolean;
+  onSit?: () => void;
+}
+
+function formatSeatLabel(seat: PublicTableSeat, index: number): string {
+  const seatNumber = index + 1;
+  if (seat.playerSubject === null) {
+    return `Seat ${seatNumber} · open`;
+  }
+  return `Seat ${seatNumber} · seated`;
+}
 
 export function renderUnseated(root: HTMLElement, context: UnseatedContext): void {
   root.replaceChildren();
@@ -31,11 +47,11 @@ export function renderUnseated(root: HTMLElement, context: UnseatedContext): voi
   seatList.setAttribute('role', 'group');
   seatList.setAttribute('aria-label', 'Open seats');
 
-  for (const label of OPEN_SEAT_LABELS) {
-    const seat = document.createElement('p');
-    seat.className = 'unseated-seat-label';
-    seat.textContent = label;
-    seatList.append(seat);
+  for (const [index, seat] of context.seats.entries()) {
+    const seatLabel = document.createElement('p');
+    seatLabel.className = 'unseated-seat-label';
+    seatLabel.textContent = formatSeatLabel(seat, index);
+    seatList.append(seatLabel);
   }
 
   const pot = document.createElement('p');
@@ -49,12 +65,21 @@ export function renderUnseated(root: HTMLElement, context: UnseatedContext): voi
   heading.className = 'surface-title unseated-heading';
   heading.textContent = 'Pick a seat';
 
+  if (context.sitFailed) {
+    const failureStatus = document.createElement('p');
+    failureStatus.className = 'unseated-sit-failure';
+    failureStatus.setAttribute('role', 'status');
+    failureStatus.setAttribute('aria-live', 'polite');
+    failureStatus.textContent = "Couldn't take a seat.";
+    footer.append(failureStatus);
+  }
+
   const sitButton = document.createElement('button');
   sitButton.type = 'button';
   sitButton.className = 'action-button unseated-sit-button';
   sitButton.textContent = 'Sit at Table';
   sitButton.addEventListener('click', () => {
-    // Locator-only attach (#38). Seat bind is #39.
+    context.onSit?.();
   });
 
   footer.append(heading, sitButton);

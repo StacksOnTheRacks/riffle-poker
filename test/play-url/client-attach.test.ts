@@ -52,6 +52,19 @@ describe('shared play URL client attach', () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo) => {
       const url = typeof input === 'string' ? input : input.url;
+      if (url.endsWith(`/v1/play/matches/${matchId}/table`)) {
+        return new Response(
+          JSON.stringify({
+            matchId,
+            seats: [
+              { seatId: 's_1', playerSubject: null, displayName: null, stack: 10000 },
+              { seatId: 's_2', playerSubject: null, displayName: null, stack: 10000 },
+            ],
+            currentSeat: null,
+          }),
+          { status: 200 },
+        );
+      }
       if (url.includes(`/v1/play/matches/${matchId}`)) {
         return new Response(JSON.stringify({ matchId }), { status: 200 });
       }
@@ -66,6 +79,8 @@ describe('shared play URL client attach', () => {
     expect(root.textContent).toContain('Between hands');
     expect(root.textContent).toContain('Pick a seat');
     expect(root.textContent).toContain('Seat 1 · open');
+    expect(root.textContent).toContain('Seat 2 · open');
+    expect(root.textContent).not.toContain('Seat 3');
     expect(root.textContent).toContain('Sit at Table');
     expect(root.textContent).not.toContain('YOU');
     expect(root.textContent).not.toContain('Waiting for deal');
@@ -98,7 +113,23 @@ describe('shared play URL client attach', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ matchId }), { status: 200 })),
+      vi.fn(async (input: RequestInfo) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.endsWith('/table')) {
+          return new Response(
+            JSON.stringify({
+              matchId,
+              seats: [
+                { seatId: 's_1', playerSubject: null, displayName: null, stack: 10000 },
+                { seatId: 's_2', playerSubject: null, displayName: null, stack: 10000 },
+              ],
+              currentSeat: null,
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ matchId }), { status: 200 });
+      }),
     );
 
     const root = document.getElementById('app')!;
@@ -111,14 +142,44 @@ describe('shared play URL client attach', () => {
     expect(root.textContent).not.toContain('Play without account');
   });
 
-  it('Sit at Table click does not POST sit or bind playerSubject', async () => {
+  it('Sit at Table click POSTs sit after ensuring bearer', async () => {
     const matchId = 'm_testsitnoop00001';
     window.history.replaceState(null, '', `/play/${matchId}`);
 
     const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.url;
-      if (url.includes('/v1/play/matches/')) {
+      if (url.endsWith(`/v1/play/matches/${matchId}/table`)) {
+        return new Response(
+          JSON.stringify({
+            matchId,
+            seats: [
+              { seatId: 's_1', playerSubject: null, displayName: null, stack: 10000 },
+              { seatId: 's_2', playerSubject: null, displayName: null, stack: 10000 },
+            ],
+            currentSeat: null,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes(`/v1/play/matches/${matchId}`)) {
         return new Response(JSON.stringify({ matchId }), { status: 200 });
+      }
+      if (url.endsWith('/v1/identity/anonymous')) {
+        return new Response(
+          JSON.stringify({ bearer: 'anon-test', playerSubject: 'anon:test' }),
+          { status: 201 },
+        );
+      }
+      if (url.endsWith('/sit')) {
+        return new Response(
+          JSON.stringify({
+            matchId,
+            seatId: 's_1',
+            seats: [],
+            currentSeat: null,
+          }),
+          { status: 201 },
+        );
       }
       return new Response('{}', { status: 404 });
     });
@@ -130,11 +191,10 @@ describe('shared play URL client attach', () => {
     const sitButton = root.querySelector('.unseated-sit-button') as HTMLButtonElement;
     sitButton.click();
 
-    const postCalls = fetchMock.mock.calls.filter(
-      ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
-    );
-    expect(postCalls).toHaveLength(0);
-    expect(sessionStorage.getItem('riffle.identity.session')).toBeNull();
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/sit'))).toBe(true);
+    });
+    expect(sessionStorage.getItem('riffle.identity.session')).toContain('anon-test');
   });
 
   it('lookupPlayMatch returns boolean from API', async () => {

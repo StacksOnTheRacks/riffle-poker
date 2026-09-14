@@ -1,3 +1,4 @@
+import { fetchPublicTable, handleSitAtTable } from './sit.js';
 import { renderEmbedError } from './surfaces/embed-error.js';
 import { renderLoading } from './surfaces/loading.js';
 import { renderUnseated } from './surfaces/unseated.js';
@@ -98,5 +99,12 @@ export async function attachSharedPlay(root: HTMLElement): Promise<void> {
     return;
   }
 
-  renderUnseated(root, { matchId });
+  const table = await fetchPublicTable(matchId);
+  renderUnseated(root, {
+    matchId,
+    seats: table?.seats ?? [],
+    onSit: () => {
+      void handleSitAtTable(root, matchId);
+    },
+  });
 }
