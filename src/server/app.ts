@@ -38,6 +38,7 @@ import {
   createPlayUrlLookupRoutes,
   createPlayUrlPageHandler,
 } from './play-url/index.js';
+import { createSitRoutes } from './sit/index.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {
   labSessionStore: LabSessionStore;
@@ -98,6 +99,13 @@ export function createApp(options: AppOptions) {
   );
   app.route('/v1', createTableRoutes(env, stores, options.tableDeps));
   app.route('/v1/identity', createIdentityRoutes(env, { identityStore: stores.identityStore }));
+  app.route(
+    '/v1/play',
+    createSitRoutes(env, {
+      identityStore: stores.identityStore,
+      matchStore: stores.matchStore,
+    }),
+  );
   app.route('/v1/play', createPlayUrlLookupRoutes({ matchStore: stores.matchStore }));
   app.get('/', createIdentityPageHandler(env));
   app.get('/sign-in', createIdentityPageHandler(env));

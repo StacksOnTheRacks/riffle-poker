@@ -138,6 +138,10 @@ export interface MatchStore {
     seatId: string,
     playerSubject: string | null,
   ): MatchStoreResult<{ seatId: string; playerSubject: string | null }>;
+  claimEmptySeat(
+    matchId: string,
+    playerSubject: string,
+  ): MatchStoreResult<{ seatId: string; created: boolean }>;
   openHand(
     matchId: string,
     input?: { buttonSeatId?: string; rng?: Rng },
@@ -251,8 +255,45 @@ export function createMatchStore(): MatchStore {
         if (!seat) {
           return fail('seat_not_found', 404);
         }
+
+        if (playerSubject !== null) {
+          if (seat.playerSubject !== null && seat.playerSubject !== playerSubject) {
+            return fail('seat_occupied', 409);
+          }
+
+          const alreadyOnOtherSeat = record.seats.find(
+            (entry) =>
+              entry.seatId !== seatId && entry.playerSubject === playerSubject,
+          );
+          if (alreadyOnOtherSeat) {
+            return fail('already_seated', 409);
+          }
+        }
+
         seat.playerSubject = playerSubject;
         return { ok: true, value: { seatId, playerSubject } };
+      });
+    },
+
+    claimEmptySeat(matchId, playerSubject) {
+      return withWriteLock(matchId, (record) => {
+        const existingSeat = record.seats.find(
+          (entry) => entry.playerSubject === playerSubject,
+        );
+        if (existingSeat) {
+          return {
+            ok: true,
+            value: { seatId: existingSeat.seatId, created: false },
+          };
+        }
+
+        const emptySeat = record.seats.find((entry) => entry.playerSubject === null);
+        if (!emptySeat) {
+          return fail('seat_occupied', 409);
+        }
+
+        emptySeat.playerSubject = playerSubject;
+        return { ok: true, value: { seatId: emptySeat.seatId, created: true } };
       });
     },
 

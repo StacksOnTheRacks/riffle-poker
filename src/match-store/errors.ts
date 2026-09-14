@@ -16,6 +16,8 @@ export type MatchStoreErrorCode =
   | 'illegal_turn'
   | 'match_not_found'
   | 'seat_not_found'
+  | 'seat_occupied'
+  | 'already_seated'
   | 'client_supplied_state'
   | 'invalid_seat_count'
   | 'not_enough_seats'
