@@ -1,11 +1,12 @@
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { loadEnv } from './env.js';
+import { attachWsUpgrade } from '../ws/index.js';
 
 const env = loadEnv();
-const { app } = createApp({ env });
+const { app, wsHub, verifyPlayBearer } = createApp({ env });
 
-serve(
+const server = serve(
   {
     fetch: app.fetch,
     port: env.listenPort,
@@ -14,3 +15,5 @@ serve(
     console.log(`riffle-poker listening on http://localhost:${info.port}`);
   },
 );
+
+attachWsUpgrade(server, { hub: wsHub, verifyPlayBearer, env });

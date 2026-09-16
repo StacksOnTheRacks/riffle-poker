@@ -1,4 +1,5 @@
 import { createApp, type AppStores } from '../../src/server/app.js';
+import type { VerifyPlayBearer, WsHub } from '../../src/ws/index.js';
 import type { HandRouteDeps } from '../../src/server/hands/routes.js';
 import type { SubmitActionDeps } from '../../src/server/actions/submit.js';
 import type { LabRouteDeps } from '../../src/server/lab/routes.js';
@@ -14,6 +15,8 @@ import {
 
 export interface TestAppOptions {
   stores?: Partial<AppStores>;
+  wsHub?: WsHub;
+  verifyPlayBearer?: VerifyPlayBearer;
   matchDeps?: MatchRouteDeps;
   seatDeps?: SeatRouteDeps;
   handDeps?: HandRouteDeps;
@@ -34,6 +37,8 @@ export function createTestApp(options: TestAppOptions = {}) {
       labEnabled: options.labEnabled ?? false,
     },
     stores: options.stores,
+    wsHub: options.wsHub,
+    verifyPlayBearer: options.verifyPlayBearer,
     matchDeps: options.matchDeps,
     seatDeps: options.seatDeps,
     handDeps: options.handDeps,
