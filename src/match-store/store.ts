@@ -5,11 +5,13 @@ import { createCryptoRng } from '../server/hands/rng.js';
 import {
   buildActionPayload,
   buildHandOpenPayload,
+  buildStreetDealPayload,
   findLatestHandComplete,
   isActionPayload,
   isHandCompletePayload,
   isHandOpenPayload,
   isStreetDealPayload,
+  lastActionSeatId,
   type MoveLogItem,
 } from '../server/hands/move-types.js';
 import {
@@ -17,8 +19,8 @@ import {
   findLatestHandOpen,
   reconstructHand,
 } from '../server/hands/reconstruct.js';
-import { applyAction, legalActions, legalize } from '../rules/index.js';
-import type { Action, Card, LegalizedAction } from '../rules/types.js';
+import { advanceStreet, applyAction, legalActions, legalize } from '../rules/index.js';
+import type { Action, Card, HandState, LegalizedAction } from '../rules/types.js';
 import { MATCH_BLINDS, MATCH_STARTING_STACK } from './constants.js';
 import { hasClientSuppliedStateKeys } from './errors.js';
 import type {
@@ -81,6 +83,108 @@ export type ApplyPlayerActionResult = {
   seats: Array<{ seatId: string; stack: number }>;
   legalActions?: LegalizedAction[];
 };
+
+export type AdvanceStreetIfCompleteResult = {
+  advanced: boolean;
+  board?: Card[];
+  street?: HandState['street'];
+};
+
+function shouldAdvanceAfterAction(state: HandState): boolean {
+  return (
+    state.phase === 'street_complete' &&
+    (state.street === 'preflop' || state.street === 'flop' || state.street === 'turn')
+  );
+}
+
+function reconstructRecordHand(record: MatchRecord) {
+  const handOpen = findLatestHandOpen(record.moves);
+  if (!handOpen) {
+    return null;
+  }
+
+  const holesBySeat = new Map<string, [Card, Card]>();
+  for (const [id, view] of record.hiddenViews) {
+    holesBySeat.set(id, [view.hole[0], view.hole[1]]);
+  }
+
+  return reconstructHand({
+    handOpen,
+    actions: actionsAfterHandOpen(record.moves),
+    holesBySeat,
+    shoe: record.shoe,
+  });
+}
+
+function advanceStreetInLock(
+  record: MatchRecord,
+): MatchStoreResult<AdvanceStreetIfCompleteResult> {
+  const reconstructed = reconstructRecordHand(record);
+  if (!reconstructed) {
+    return { ok: true, value: { advanced: false } };
+  }
+  if (!reconstructed.ok) {
+    return fail('reconstruct_failed', 400);
+  }
+
+  const state = reconstructed.value;
+  if (!shouldAdvanceAfterAction(state)) {
+    return { ok: true, value: { advanced: false } };
+  }
+
+  for (const seat of state.seats) {
+    if (!seat.folded && seat.stack === 0) {
+      return fail('all_in_or_side_pot_unsupported', 400);
+    }
+  }
+
+  const advanced = advanceStreet(state);
+  if (!advanced.ok) {
+    switch (advanced.error.code) {
+      case 'street_not_complete':
+      case 'cannot_advance':
+        return fail(advanced.error.code, 409);
+      default:
+        return fail('advance_failed', 400);
+    }
+  }
+
+  const nextState = advanced.value;
+  if (nextState.currentSeatId === null) {
+    return fail('advance_failed', 400);
+  }
+
+  const actions = actionsAfterHandOpen(record.moves);
+  const pathSeatId = lastActionSeatId(actions) ?? record.seats[0]!.seatId;
+  const streetDealPayload = buildStreetDealPayload(
+    nextState.street as 'flop' | 'turn' | 'river',
+    nextState.board,
+  );
+
+  record.moves.push({
+    seq: record.moves.length + 1,
+    seatId: pathSeatId,
+    payload: streetDealPayload,
+    createdAt: new Date().toISOString(),
+  });
+
+  record.currentSeat = nextState.currentSeatId;
+  for (const seatState of nextState.seats) {
+    const matchSeat = record.seats.find((entry) => entry.seatId === seatState.seatId);
+    if (matchSeat) {
+      matchSeat.stack = seatState.stack;
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      advanced: true,
+      board: [...nextState.board],
+      street: nextState.street,
+    },
+  };
+}
 
 function hasHandOpen(moves: MoveLogItem[]): boolean {
   return moves.some((item) => isHandOpenPayload(item.payload));
@@ -198,6 +302,13 @@ export interface MatchStore {
     action: Action,
     expectedOccupant: string,
   ): MatchStoreResult<ApplyPlayerActionResult>;
+  advanceStreetIfComplete(
+    matchId: string,
+  ): MatchStoreResult<AdvanceStreetIfCompleteResult>;
+  getSeatLegalActions(
+    matchId: string,
+    seatId: string,
+  ): LegalizedAction[] | undefined;
 }
 
 export function createMatchStore(): MatchStore {
@@ -642,27 +753,62 @@ export function createMatchStore(): MatchStore {
           }
         }
 
+        let displayState = nextState;
+        if (shouldAdvanceAfterAction(nextState)) {
+          const healed = advanceStreetInLock(record);
+          if (!healed.ok) {
+            return healed;
+          }
+          if (healed.value.advanced) {
+            const afterAdvance = reconstructRecordHand(record);
+            if (afterAdvance?.ok) {
+              displayState = afterAdvance.value;
+            }
+          }
+        }
+
         const hidden = record.hiddenViews.get(seatId);
         const legal =
-          nextState.phase === 'betting' && nextState.currentSeatId === seatId
-            ? legalActions(nextState, seatId)
+          displayState.phase === 'betting' && displayState.currentSeatId === seatId
+            ? legalActions(displayState, seatId)
             : undefined;
 
         const result: ApplyPlayerActionResult = {
           seatId,
           hole: hidden ? ([hidden.hole[0], hidden.hole[1]] as const) : null,
-          currentSeat: nextState.currentSeatId,
-          pot: nextState.pot,
+          currentSeat: displayState.currentSeatId,
+          pot: displayState.pot,
           seats: record.seats.map((entry) => ({
             seatId: entry.seatId,
             stack: entry.stack,
           })),
-          ...(nextState.board.length >= 3 ? { board: [...nextState.board] } : {}),
+          ...(displayState.board.length >= 3 ? { board: [...displayState.board] } : {}),
           ...(legal && legal.length > 0 ? { legalActions: legal } : {}),
         };
 
         return { ok: true, value: result };
       });
+    },
+
+    advanceStreetIfComplete(matchId) {
+      return withWriteLock(matchId, (record) => advanceStreetInLock(record));
+    },
+
+    getSeatLegalActions(matchId, seatId) {
+      const record = getRecord(matchId);
+      if (!record) {
+        return undefined;
+      }
+      const reconstructed = reconstructRecordHand(record);
+      if (!reconstructed?.ok) {
+        return undefined;
+      }
+      const state = reconstructed.value;
+      if (state.phase !== 'betting' || state.currentSeatId !== seatId) {
+        return undefined;
+      }
+      const legal = legalActions(state, seatId);
+      return legal.length > 0 ? legal : undefined;
     },
   };
 }

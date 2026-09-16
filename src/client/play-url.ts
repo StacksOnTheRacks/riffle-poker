@@ -28,6 +28,10 @@ export function parsePlayUrlMatchId(pathname: string): string | undefined {
   return match?.[1];
 }
 
+export function isSharedPlayUrlPath(pathname: string = window.location.pathname): boolean {
+  return parsePlayUrlMatchId(pathname) !== undefined;
+}
+
 export function isEmbedChrome(search: string): boolean {
   return new URLSearchParams(search).get('embed') === '1';
 }

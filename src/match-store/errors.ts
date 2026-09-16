@@ -32,7 +32,10 @@ export type MatchStoreErrorCode =
   | 'already_complete'
   | 'betting_not_open'
   | 'holes_not_dealt'
-  | 'reconstruct_failed';
+  | 'reconstruct_failed'
+  | 'street_not_complete'
+  | 'cannot_advance'
+  | 'advance_failed';
 
 export function hasClientSuppliedStateKeys(input: unknown): boolean {
   if (typeof input !== 'object' || input === null) {
