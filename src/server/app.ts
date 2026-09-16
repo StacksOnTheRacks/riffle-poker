@@ -40,6 +40,12 @@ import {
 } from './play-url/index.js';
 import { createSitRoutes } from './sit/index.js';
 import { createDisplayNameRoutes } from './display-name/index.js';
+import {
+  createVerifyPlayBearer,
+  createWsHub,
+  type VerifyPlayBearer,
+  type WsHub,
+} from '../ws/index.js';
 
 export interface AppStores extends BootstrapStores, SeatCapabilityStores {
   labSessionStore: LabSessionStore;
@@ -50,6 +56,8 @@ export interface AppStores extends BootstrapStores, SeatCapabilityStores {
 export interface AppOptions {
   env: RiffleEnv;
   stores?: Partial<AppStores>;
+  wsHub?: WsHub;
+  verifyPlayBearer?: VerifyPlayBearer;
   matchDeps?: MatchRouteDeps;
   seatDeps?: SeatRouteDeps;
   handDeps?: HandRouteDeps;
@@ -65,6 +73,9 @@ export function createApp(options: AppOptions) {
   const labSessionStore = options.stores?.labSessionStore ?? createLabSessionStore();
   const identityStore = options.stores?.identityStore ?? createIdentityStore();
   const matchStore = options.stores?.matchStore ?? createMatchStore();
+  const wsHub = options.wsHub ?? createWsHub();
+  const verifyPlayBearer =
+    options.verifyPlayBearer ?? createVerifyPlayBearer(identityStore, env);
   const stores: AppStores = {
     ...bootstrapStores,
     ...seatCapabilityStores,
@@ -115,6 +126,16 @@ export function createApp(options: AppOptions) {
     }),
   );
   app.route('/v1/play', createPlayUrlLookupRoutes({ matchStore: stores.matchStore }));
+  app.get('/v1/ws', (c) =>
+    c.text('Upgrade Required', 426, {
+      Upgrade: 'websocket',
+    }),
+  );
+  app.get('/v1/ws/', (c) =>
+    c.text('Upgrade Required', 426, {
+      Upgrade: 'websocket',
+    }),
+  );
   app.get('/', createIdentityPageHandler(env));
   app.get('/sign-in', createIdentityPageHandler(env));
   app.get('/sign-up', createIdentityPageHandler(env));
@@ -128,5 +149,5 @@ export function createApp(options: AppOptions) {
   app.get('/lab.js', createLabJsHandler());
   app.get('/lab.css', createLabCssHandler());
 
-  return { app, stores };
+  return { app, stores, wsHub, verifyPlayBearer };
 }

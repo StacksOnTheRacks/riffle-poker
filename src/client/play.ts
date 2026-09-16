@@ -9,6 +9,10 @@ import { renderLoading } from './surfaces/loading.js';
 import { renderMyTurn } from './surfaces/my-turn.js';
 import { renderTableShell } from './surfaces/table-shell.js';
 import { isTableRefreshMessage, postTableChangedToParent } from './table-refresh.js';
+import {
+  attachPublicTableNotify,
+  type PublicTableNotifyHandle,
+} from './table-notify.js';
 
 const BOOTSTRAP_HASH_PREFIX = '#bt=';
 
@@ -121,8 +125,11 @@ type SeatTableResponse = {
 let boundPlayRoot: HTMLElement | undefined;
 let boundMatchId = '';
 let tableRefreshListenerBound = false;
+let tableNotifyHandle: PublicTableNotifyHandle | undefined;
 
 export function resetPlayBindings(): void {
+  tableNotifyHandle?.disconnect();
+  tableNotifyHandle = undefined;
   boundPlayRoot = undefined;
   boundMatchId = '';
 }
@@ -150,6 +157,11 @@ function bindWaitingTable(root: HTMLElement, matchId: string): void {
   boundPlayRoot = root;
   boundMatchId = matchId;
   renderTableShell(root, { matchId });
+  tableNotifyHandle?.disconnect();
+  tableNotifyHandle = attachPublicTableNotify({
+    matchId,
+    onRefresh: () => refreshPlayTable(root, matchId),
+  });
 }
 
 async function loadSeatTable(matchId: string): Promise<SeatTableResponse | undefined> {

@@ -20,13 +20,15 @@
   "dependencies": {
     "@hono/node-server": "^1.14.1",
     "@turnur/sdk": "file:./vendor/turnur-sdk",
-    "hono": "^4.7.7"
+    "hono": "^4.7.7",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
+    "@types/ws": "^8.18.1",
     "esbuild": "^0.25.2",
-    "tsx": "^4.19.3",
     "happy-dom": "^17.4.4",
+    "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "vitest": "^3.1.2"
   }

@@ -3,6 +3,10 @@ import { renderEmbedError } from './surfaces/embed-error.js';
 import { renderLoading } from './surfaces/loading.js';
 import { renderUnseated } from './surfaces/unseated.js';
 import { isTableChangedMessage, isTableRefreshMessage } from './table-refresh.js';
+import {
+  attachPublicTableNotify,
+  type PublicTableNotifyHandle,
+} from './table-notify.js';
 
 const PLAY_PATH_RE = /^\/play\/([^/]+)\/?$/;
 
@@ -17,6 +21,7 @@ const FORBIDDEN_MESSAGE_KEYS = new Set([
 ]);
 
 let sharedPostMessageBound = false;
+let sharedTableNotifyHandle: PublicTableNotifyHandle | undefined;
 
 export function parsePlayUrlMatchId(pathname: string): string | undefined {
   const match = pathname.match(PLAY_PATH_RE);
@@ -68,6 +73,8 @@ export function acceptSharedPlayPostMessage(allowedOrigins: string[]): void {
 
 export function resetSharedPlayBindings(): void {
   sharedPostMessageBound = false;
+  sharedTableNotifyHandle?.disconnect();
+  sharedTableNotifyHandle = undefined;
 }
 
 export async function lookupPlayMatch(matchId: string): Promise<boolean> {
@@ -105,6 +112,24 @@ export async function attachSharedPlay(root: HTMLElement): Promise<void> {
     seats: table?.seats ?? [],
     onSit: () => {
       void handleSitAtTable(root, matchId);
+    },
+  });
+
+  sharedTableNotifyHandle?.disconnect();
+  sharedTableNotifyHandle = attachPublicTableNotify({
+    matchId,
+    onRefresh: async () => {
+      const refreshed = await fetchPublicTable(matchId);
+      if (root.dataset.surface !== 'unseated') {
+        return;
+      }
+      renderUnseated(root, {
+        matchId,
+        seats: refreshed?.seats ?? [],
+        onSit: () => {
+          void handleSitAtTable(root, matchId);
+        },
+      });
     },
   });
 }
