@@ -3,6 +3,7 @@ import { dealHand } from '../rules/deal.js';
 import type { Rng } from '../rules/types.js';
 import { createCryptoRng } from '../server/hands/rng.js';
 import {
+  buildActionPayload,
   buildHandOpenPayload,
   findLatestHandComplete,
   isActionPayload,
@@ -16,6 +17,8 @@ import {
   findLatestHandOpen,
   reconstructHand,
 } from '../server/hands/reconstruct.js';
+import { applyAction, legalActions, legalize } from '../rules/index.js';
+import type { Action, Card, LegalizedAction } from '../rules/types.js';
 import { MATCH_BLINDS, MATCH_STARTING_STACK } from './constants.js';
 import { hasClientSuppliedStateKeys } from './errors.js';
 import type {
@@ -49,10 +52,35 @@ function generateSeatId(): string {
 
 function fail<T>(
   error: MatchStoreResult<T> extends { ok: false; error: infer E } ? E : never,
-  status: 400 | 404 | 409,
+  status: 400 | 403 | 404 | 409,
 ): MatchStoreResult<T> {
   return { ok: false, error, status };
 }
+
+function mapRulesReject(code: string): MatchStoreResult<never> | null {
+  switch (code) {
+    case 'off_turn':
+      return fail('off_turn', 409);
+    case 'illegal_action':
+      return fail('illegal_action', 400);
+    case 'all_in_or_side_pot_unsupported':
+      return fail('all_in_or_side_pot_unsupported', 400);
+    case 'already_complete':
+      return fail('already_complete', 409);
+    default:
+      return fail('illegal_action', 400);
+  }
+}
+
+export type ApplyPlayerActionResult = {
+  seatId: string;
+  hole: [Card, Card] | null;
+  currentSeat: string | null;
+  pot?: number;
+  board?: Card[];
+  seats: Array<{ seatId: string; stack: number }>;
+  legalActions?: LegalizedAction[];
+};
 
 function hasHandOpen(moves: MoveLogItem[]): boolean {
   return moves.some((item) => isHandOpenPayload(item.payload));
@@ -164,6 +192,12 @@ export interface MatchStore {
   getSeatView(matchId: string, seatId: string): MatchStoreResult<SeatMatchView>;
   getMoves(matchId: string): MatchStoreResult<MoveLogItem[]>;
   holdWrite(matchId: string): MatchStoreResult<HoldWriteHandle>;
+  applyPlayerAction(
+    matchId: string,
+    seatId: string,
+    action: Action,
+    expectedOccupant: string,
+  ): MatchStoreResult<ApplyPlayerActionResult>;
 }
 
 export function createMatchStore(): MatchStore {
@@ -529,6 +563,106 @@ export function createMatchStore(): MatchStore {
           },
         },
       };
+    },
+
+    applyPlayerAction(matchId, seatId, action, expectedOccupant) {
+      return withWriteLock(matchId, (record) => {
+        const seat = record.seats.find((entry) => entry.seatId === seatId);
+        if (!seat) {
+          return fail('seat_not_found', 404);
+        }
+
+        if (
+          seat.playerSubject === null ||
+          seat.playerSubject !== expectedOccupant
+        ) {
+          return fail('not_occupant', 403);
+        }
+
+        const handOpen = findLatestHandOpen(record.moves);
+        if (!handOpen) {
+          return fail('betting_not_open', 409);
+        }
+
+        const holesBySeat = new Map<string, [Card, Card]>();
+        for (const [id, view] of record.hiddenViews) {
+          holesBySeat.set(id, [view.hole[0], view.hole[1]]);
+        }
+
+        if (holesBySeat.size === 0) {
+          return fail('holes_not_dealt', 400);
+        }
+
+        const reconstructed = reconstructHand({
+          handOpen,
+          actions: actionsAfterHandOpen(record.moves),
+          holesBySeat,
+          shoe: record.shoe,
+        });
+
+        if (!reconstructed.ok) {
+          if (reconstructed.error === 'holes_not_dealt') {
+            return fail('holes_not_dealt', 400);
+          }
+          return fail('reconstruct_failed', 400);
+        }
+
+        const legalized = legalize(reconstructed.value, seatId, action);
+        if (!legalized.ok) {
+          const mapped = mapRulesReject(legalized.error.code);
+          if (mapped) {
+            return mapped;
+          }
+        }
+
+        const applied = applyAction(reconstructed.value, seatId, action);
+        if (!applied.ok) {
+          const mapped = mapRulesReject(applied.error.code);
+          if (mapped) {
+            return mapped;
+          }
+        }
+
+        const nextState = applied.value;
+        const actionPayload = buildActionPayload(legalized.value);
+
+        const seq = record.moves.length + 1;
+        record.moves.push({
+          seq,
+          seatId,
+          payload: actionPayload,
+          createdAt: new Date().toISOString(),
+        });
+
+        record.currentSeat = nextState.currentSeatId;
+        for (const seatState of nextState.seats) {
+          const matchSeat = record.seats.find((entry) => entry.seatId === seatState.seatId);
+          if (matchSeat) {
+            matchSeat.stack = seatState.stack;
+          }
+        }
+
+        const hidden = record.hiddenViews.get(seatId);
+        const legal =
+          nextState.phase === 'betting' && nextState.currentSeatId === seatId
+            ? legalActions(nextState, seatId)
+            : undefined;
+
+        const result: ApplyPlayerActionResult = {
+          seatId,
+          hole: hidden ? ([hidden.hole[0], hidden.hole[1]] as const) : null,
+          currentSeat: nextState.currentSeatId,
+          pot: nextState.pot,
+          seats: record.seats.map((entry) => ({
+            seatId: entry.seatId,
+            stack: entry.stack,
+          })),
+          ...(nextState.board.length >= 3 ? { board: [...nextState.board] } : {}),
+          ...(legal && legal.length > 0 ? { legalActions: legal } : {}),
+        };
+
+        return { ok: true, value: result };
+      });
     },
   };
 }

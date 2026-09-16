@@ -12,6 +12,7 @@ import {
 import { acceptSeatCapabilityPostMessage, SEAT_CAPABILITY_MESSAGE_TYPE } from '../src/client/seat-capability.js';
 import { renderEmbedError } from '../src/client/surfaces/embed-error.js';
 import { renderTableShell } from '../src/client/surfaces/table-shell.js';
+import { IDENTITY_SESSION_KEY } from '../src/client/identity/session.js';
 import { TABLE_CHANGED_MESSAGE_TYPE } from '../src/client/table-refresh.js';
 import { TEST_MATCH_ID } from './helpers/fixtures.js';
 
@@ -307,7 +308,7 @@ describe('client bootstrap play flow', () => {
     expect(root.querySelector('.action-bet-raise')?.textContent).toBe('Raise');
   });
 
-  it('submitting a legal action posts to the seat action route and notifies the parent', async () => {
+  it('submitting a legal action posts to the play action route and notifies the parent', async () => {
     const root = document.getElementById('app')!;
     acceptSeatCapabilityPostMessage();
     window.dispatchEvent(
@@ -315,6 +316,11 @@ describe('client bootstrap play flow', () => {
         origin: window.location.origin,
         data: { type: SEAT_CAPABILITY_MESSAGE_TYPE, capability: 'a'.repeat(64) },
       }),
+    );
+
+    sessionStorage.setItem(
+      IDENTITY_SESSION_KEY,
+      JSON.stringify({ bearer: 'play-bearer-token', playerSubject: 'anon:test' }),
     );
 
     const parentPost = vi.fn();
@@ -350,7 +356,10 @@ describe('client bootstrap play flow', () => {
             : [{ type: 'fold' }, { type: 'call', amount: 50 }, { type: 'raise', amount: 200 }],
         });
       }
-      if (url.endsWith('/v1/seats/seat-1/actions') && init?.method === 'POST') {
+      if (
+        url === `/v1/play/matches/${TEST_MATCH_ID}/seats/seat-1/actions` &&
+        init?.method === 'POST'
+      ) {
         submitted = true;
         return Response.json({
           matchId: TEST_MATCH_ID,
@@ -375,10 +384,13 @@ describe('client bootstrap play flow', () => {
     foldButton.click();
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        '/v1/seats/seat-1/actions',
+        `/v1/play/matches/${TEST_MATCH_ID}/seats/seat-1/actions`,
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ matchId: TEST_MATCH_ID, action: { type: 'fold' } }),
+          body: JSON.stringify({ action: { type: 'fold' } }),
+          headers: expect.objectContaining({
+            Authorization: 'Bearer play-bearer-token',
+          }),
         }),
       );
     });
