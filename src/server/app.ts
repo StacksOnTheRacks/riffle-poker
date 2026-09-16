@@ -41,6 +41,7 @@ import {
 import { createSitRoutes } from './sit/index.js';
 import { createDisplayNameRoutes } from './display-name/index.js';
 import { createPlayActionRoutes } from './play-actions/index.js';
+import { createPlayViewRoutes } from './play-views/index.js';
 import {
   createVerifyPlayBearer,
   createWsHub,
@@ -133,6 +134,13 @@ export function createApp(options: AppOptions) {
       identityStore: stores.identityStore,
       matchStore: stores.matchStore,
       wsHub,
+    }),
+  );
+  app.route(
+    '/v1/play',
+    createPlayViewRoutes(env, {
+      identityStore: stores.identityStore,
+      matchStore: stores.matchStore,
     }),
   );
   app.get('/v1/ws', (c) =>

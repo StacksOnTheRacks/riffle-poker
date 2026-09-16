@@ -1,6 +1,6 @@
 import './styles.css';
 import type { LegalActionOption } from './actions-bar.js';
-import { attachSharedPlay, parsePlayUrlMatchId } from './play-url.js';
+import { attachSharedPlay, isSharedPlayUrlPath, parsePlayUrlMatchId } from './play-url.js';
 import { acceptSeatCapabilityPostMessage, seatScopedFetch } from './seat-capability.js';
 import { renderHandComplete, renderShowdown } from './hand-complete.js';
 import { renderEmbedError, type EmbedErrorReason } from './surfaces/embed-error.js';
@@ -165,7 +165,7 @@ function bindWaitingTable(root: HTMLElement, matchId: string): void {
   });
 }
 
-async function loadSeatTable(matchId: string): Promise<SeatTableResponse | undefined> {
+async function loadLegacySeatTable(matchId: string): Promise<SeatTableResponse | undefined> {
   const publicResponse = await fetch(`/v1/table?matchId=${encodeURIComponent(matchId)}`, {
     credentials: 'same-origin',
   });
@@ -185,6 +185,48 @@ async function loadSeatTable(matchId: string): Promise<SeatTableResponse | undef
   }
 
   return undefined;
+}
+
+async function loadSharedPlaySeatTable(matchId: string): Promise<SeatTableResponse | undefined> {
+  const session = readStoredSession();
+  if (!session) {
+    return undefined;
+  }
+
+  const publicResponse = await fetch(
+    `/v1/play/matches/${encodeURIComponent(matchId)}/table`,
+    { credentials: 'same-origin' },
+  );
+  if (!publicResponse.ok) {
+    return undefined;
+  }
+
+  const publicTable = (await publicResponse.json()) as {
+    seats?: Array<{ seatId: string; playerSubject: string | null }>;
+  };
+  const boundSeat = publicTable.seats?.find(
+    (seat) => seat.playerSubject === session.playerSubject,
+  );
+  if (!boundSeat) {
+    return undefined;
+  }
+
+  const seatResponse = await fetch(
+    `/v1/play/matches/${encodeURIComponent(matchId)}/seats/${encodeURIComponent(boundSeat.seatId)}/table`,
+    { headers: identityAuthHeaders() },
+  );
+  if (!seatResponse.ok) {
+    return undefined;
+  }
+
+  return (await seatResponse.json()) as SeatTableResponse;
+}
+
+async function loadSeatTable(matchId: string): Promise<SeatTableResponse | undefined> {
+  if (isSharedPlayUrlPath()) {
+    return loadSharedPlaySeatTable(matchId);
+  }
+  return loadLegacySeatTable(matchId);
 }
 
 function facingBetFromActions(legalActions: LegalActionOption[] | undefined): boolean {
