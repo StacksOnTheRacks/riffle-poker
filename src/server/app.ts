@@ -40,6 +40,7 @@ import {
 } from './play-url/index.js';
 import { createSitRoutes } from './sit/index.js';
 import { createDisplayNameRoutes } from './display-name/index.js';
+import { createPlayActionRoutes } from './play-actions/index.js';
 import {
   createVerifyPlayBearer,
   createWsHub,
@@ -126,6 +127,14 @@ export function createApp(options: AppOptions) {
     }),
   );
   app.route('/v1/play', createPlayUrlLookupRoutes({ matchStore: stores.matchStore }));
+  app.route(
+    '/v1/play',
+    createPlayActionRoutes(env, {
+      identityStore: stores.identityStore,
+      matchStore: stores.matchStore,
+      wsHub,
+    }),
+  );
   app.get('/v1/ws', (c) =>
     c.text('Upgrade Required', 426, {
       Upgrade: 'websocket',

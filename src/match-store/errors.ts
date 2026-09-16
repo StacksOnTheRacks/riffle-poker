@@ -19,12 +19,20 @@ export type MatchStoreErrorCode =
   | 'seat_occupied'
   | 'already_seated'
   | 'not_seated'
+  | 'not_occupant'
   | 'client_supplied_state'
   | 'invalid_seat_count'
   | 'not_enough_seats'
   | 'hand_already_open'
   | 'invalid_payload'
-  | 'invalid_deal';
+  | 'invalid_deal'
+  | 'off_turn'
+  | 'illegal_action'
+  | 'all_in_or_side_pot_unsupported'
+  | 'already_complete'
+  | 'betting_not_open'
+  | 'holes_not_dealt'
+  | 'reconstruct_failed';
 
 export function hasClientSuppliedStateKeys(input: unknown): boolean {
   if (typeof input !== 'object' || input === null) {

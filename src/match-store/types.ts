@@ -31,7 +31,7 @@ export type MatchRecord = {
 
 export type MatchStoreResult<T> =
   | { ok: true; value: T }
-  | { ok: false; error: MatchStoreErrorCode; status: 400 | 404 | 409 };
+  | { ok: false; error: MatchStoreErrorCode; status: 400 | 403 | 404 | 409 };
 
 export type PublicMatchSeat = {
   seatId: string;

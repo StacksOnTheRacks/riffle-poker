@@ -13,6 +13,7 @@ import {
   attachPublicTableNotify,
   type PublicTableNotifyHandle,
 } from './table-notify.js';
+import { identityAuthHeaders, readStoredSession } from './identity/session.js';
 
 const BOOTSTRAP_HASH_PREFIX = '#bt=';
 
@@ -206,25 +207,96 @@ function sharedTableChrome(table: SeatTableResponse) {
   return { opponents, stacks };
 }
 
+export function renderFromSeatTable(root: HTMLElement, table: SeatTableResponse): void {
+  if (!table.hole) {
+    return;
+  }
+
+  const { opponents, stacks } = sharedTableChrome(table);
+
+  if (table.completeReason === 'showdown') {
+    renderShowdown(root, {
+      matchId: table.matchId,
+      seatId: table.seatId,
+      hole: table.hole,
+      board: table.board,
+      pot: table.pot,
+      winners: table.winners,
+      shownHoles: table.shownHoles,
+    });
+    return;
+  }
+
+  if (table.completeReason === 'fold_to_one') {
+    renderHandComplete(root, {
+      matchId: table.matchId,
+      seatId: table.seatId,
+      hole: table.hole,
+      board: table.board,
+      winners: table.winners,
+      shownHoles: table.shownHoles,
+      completeReason: table.completeReason,
+    });
+    return;
+  }
+
+  const myTurn =
+    table.currentSeat === table.seatId &&
+    Array.isArray(table.legalActions) &&
+    table.legalActions.length > 0;
+
+  if (myTurn) {
+    renderMyTurn(root, {
+      matchId: table.matchId,
+      seatId: table.seatId,
+      hole: table.hole,
+      board: table.board,
+      opponents,
+      pot: table.pot,
+      stacks,
+      legalActions: table.legalActions,
+      facingBet: facingBetFromActions(table.legalActions),
+      onSubmitAction: (nextAction) => submitPlayAction(root, table, nextAction),
+    });
+    return;
+  }
+
+  renderHandInProgress(root, {
+    matchId: table.matchId,
+    seatId: table.seatId,
+    hole: table.hole,
+    board: table.board,
+    opponents,
+    pot: table.pot,
+    stacks,
+    showDisabledActionsBar: true,
+    facingBet: table.currentSeat !== null && table.currentSeat !== table.seatId,
+  });
+}
+
 export async function submitPlayAction(
   root: HTMLElement,
   table: Pick<SeatTableResponse, 'matchId' | 'seatId'>,
   action: { type: string; amount?: number },
 ): Promise<void> {
-  const response = await seatScopedFetch(
-    `/v1/seats/${encodeURIComponent(table.seatId)}/actions`,
+  if (!readStoredSession()) {
+    return;
+  }
+
+  const response = await fetch(
+    `/v1/play/matches/${encodeURIComponent(table.matchId)}/seats/${encodeURIComponent(table.seatId)}/actions`,
     {
       method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matchId: table.matchId, action }),
+      headers: identityAuthHeaders(),
+      body: JSON.stringify({ action }),
     },
   );
   if (!response.ok) {
     return;
   }
 
-  await refreshPlayTable(root, table.matchId);
+  const seatTable = (await response.json()) as SeatTableResponse;
+  renderFromSeatTable(root, seatTable);
   postTableChangedToParent();
 }
 
@@ -235,66 +307,7 @@ export async function refreshPlayTable(root: HTMLElement, matchId: string): Prom
       return;
     }
 
-    const { opponents, stacks } = sharedTableChrome(table);
-
-    if (table.completeReason === 'showdown') {
-      renderShowdown(root, {
-        matchId: table.matchId,
-        seatId: table.seatId,
-        hole: table.hole,
-        board: table.board,
-        pot: table.pot,
-        winners: table.winners,
-        shownHoles: table.shownHoles,
-      });
-      return;
-    }
-
-    if (table.completeReason === 'fold_to_one') {
-      renderHandComplete(root, {
-        matchId: table.matchId,
-        seatId: table.seatId,
-        hole: table.hole,
-        board: table.board,
-        winners: table.winners,
-        shownHoles: table.shownHoles,
-        completeReason: table.completeReason,
-      });
-      return;
-    }
-
-    const myTurn =
-      table.currentSeat === table.seatId &&
-      Array.isArray(table.legalActions) &&
-      table.legalActions.length > 0;
-
-    if (myTurn) {
-      renderMyTurn(root, {
-        matchId: table.matchId,
-        seatId: table.seatId,
-        hole: table.hole,
-        board: table.board,
-        opponents,
-        pot: table.pot,
-        stacks,
-        legalActions: table.legalActions,
-        facingBet: facingBetFromActions(table.legalActions),
-        onSubmitAction: (action) => submitPlayAction(root, table, action),
-      });
-      return;
-    }
-
-    renderHandInProgress(root, {
-      matchId: table.matchId,
-      seatId: table.seatId,
-      hole: table.hole,
-      board: table.board,
-      opponents,
-      pot: table.pot,
-      stacks,
-      showDisabledActionsBar: true,
-      facingBet: table.currentSeat !== null && table.currentSeat !== table.seatId,
-    });
+    renderFromSeatTable(root, table);
   } catch {
     // Stay on the waiting-for-deal shell if the table cannot be read yet.
   }
