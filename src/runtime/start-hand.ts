@@ -1,6 +1,9 @@
 import { dealHand } from '../rules/deal.js';
 import { createSeededRng } from '../rules/rng.js';
-import type { HandState } from '../rules/types.js';
+import {
+  applyHandStateToSeats,
+  applyHandStateToTable,
+} from './hand-state.js';
 import { findSeatByToken } from './sit.js';
 import type { MatchStore } from './store.js';
 import type { ClientMessage, ConnectionRecord, SeatRecord, TableRecord } from './types.js';
@@ -59,23 +62,6 @@ export function chooseButtonSeatId(seats: SeatRecord[], previousButton?: string)
   return seatedIds[0]!;
 }
 
-function applyHandStateToSeats(handState: HandState, seats: SeatRecord[]): SeatRecord[] {
-  return seats.map((seat) => {
-    const handSeat = handState.seats.find((row) => row.seatId === seat.seatId);
-    if (!handSeat) {
-      return seat;
-    }
-    return {
-      ...seat,
-      stack: handSeat.stack,
-      hole: [handSeat.hole[0], handSeat.hole[1]],
-      folded: handSeat.folded,
-      streetCommitted: handSeat.streetCommitted,
-      handCommitted: handSeat.handCommitted,
-    };
-  });
-}
-
 export async function handleStartHand(ctx: StartHandContext): Promise<StartHandResult> {
   const { connection, table, seats, message } = ctx;
 
@@ -114,17 +100,15 @@ export async function handleStartHand(ctx: StartHandContext): Promise<StartHandR
 
   const handState = dealResult.value;
   const nextHandNumber = table.handNumber + 1;
-  const updatedTable: TableRecord = {
-    ...table,
-    version: table.version + 1,
-    status: 'hand_in_progress',
-    handNumber: nextHandNumber,
-    buttonSeatId,
-    street: handState.street,
-    currentSeatId: handState.currentSeatId,
-    pot: handState.pot,
-    board: [],
-  };
+  const updatedTable = applyHandStateToTable(
+    {
+      ...table,
+      handNumber: nextHandNumber,
+      buttonSeatId,
+    },
+    handState,
+    table.version + 1,
+  );
 
   const updatedSeats = applyHandStateToSeats(handState, seats);
   const persisted = await ctx.store.updateTableWithVersion(

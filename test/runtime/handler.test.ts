@@ -368,8 +368,14 @@ describe('match runtime handler', () => {
     }
 
     expect(await store.getTable('table-uuid-1234')).toEqual(before);
-    expect(sent.get('conn-a')?.slice(1)).toEqual(
-      Array(7).fill({ type: 'error', code: 'unsupported_action' }),
-    );
+    expect(sent.get('conn-a')?.slice(1)).toEqual([
+      { type: 'error', code: 'hand_not_in_progress' },
+      { type: 'error', code: 'hand_not_in_progress' },
+      { type: 'error', code: 'hand_not_in_progress' },
+      { type: 'error', code: 'hand_not_in_progress' },
+      { type: 'error', code: 'hand_not_in_progress' },
+      { type: 'error', code: 'unsupported_action' },
+      { type: 'error', code: 'unsupported_action' },
+    ]);
   });
 });

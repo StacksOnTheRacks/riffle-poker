@@ -60,6 +60,21 @@ function parseTableItem(item: Record<string, unknown>): TableRecord {
         : String(item.currentSeatId),
     pot: item.pot === undefined ? 0 : Number(item.pot),
     board: Array.isArray(item.board) ? (item.board as TableRecord['board']) : [],
+    phase: item.phase ? (String(item.phase) as TableRecord['phase']) : null,
+    currentBet: item.currentBet === undefined ? undefined : Number(item.currentBet),
+    lastRaiseSize:
+      item.lastRaiseSize === undefined ? undefined : Number(item.lastRaiseSize),
+    deckRemaining: Array.isArray(item.deckRemaining)
+      ? (item.deckRemaining as TableRecord['deckRemaining'])
+      : [],
+    burns: Array.isArray(item.burns) ? (item.burns as TableRecord['burns']) : [],
+    actedThisStreet: Array.isArray(item.actedThisStreet)
+      ? item.actedThisStreet.map(String)
+      : [],
+    lastAggressorSeatId:
+      item.lastAggressorSeatId === undefined || item.lastAggressorSeatId === null
+        ? null
+        : String(item.lastAggressorSeatId),
   };
 }
 
@@ -355,12 +370,13 @@ export function createMatchStore(
               SK: META_SK,
             },
             UpdateExpression:
-              'SET #version = :nextVersion, #status = :status, handNumber = :handNumber, buttonSeatId = :buttonSeatId, street = :street, currentSeatId = :currentSeatId, pot = :pot, #board = :board',
+              'SET #version = :nextVersion, #status = :status, handNumber = :handNumber, buttonSeatId = :buttonSeatId, street = :street, currentSeatId = :currentSeatId, pot = :pot, #board = :board, #phase = :phase, currentBet = :currentBet, lastRaiseSize = :lastRaiseSize, deckRemaining = :deckRemaining, burns = :burns, actedThisStreet = :actedThisStreet, lastAggressorSeatId = :lastAggressorSeatId',
             ConditionExpression: '#version = :expectedVersion',
             ExpressionAttributeNames: {
               '#version': 'version',
               '#status': 'status',
               '#board': 'board',
+              '#phase': 'phase',
             },
             ExpressionAttributeValues: {
               ':expectedVersion': expectedVersion,
@@ -372,6 +388,13 @@ export function createMatchStore(
               ':currentSeatId': table.currentSeatId ?? null,
               ':pot': table.pot ?? 0,
               ':board': table.board ?? [],
+              ':phase': table.phase ?? null,
+              ':currentBet': table.currentBet ?? null,
+              ':lastRaiseSize': table.lastRaiseSize ?? null,
+              ':deckRemaining': table.deckRemaining ?? [],
+              ':burns': table.burns ?? [],
+              ':actedThisStreet': table.actedThisStreet ?? [],
+              ':lastAggressorSeatId': table.lastAggressorSeatId ?? null,
             },
           }),
         );

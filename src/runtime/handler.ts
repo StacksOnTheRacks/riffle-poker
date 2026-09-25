@@ -7,6 +7,7 @@ import {
   isUnsupportedGameplayAction,
   parseClientMessage,
 } from './messages.js';
+import { handleAct, isBettingAction } from './act.js';
 import { handleLeave, handleSit } from './sit.js';
 import { handleStartHand } from './start-hand.js';
 import { createMatchStore, type MatchStore } from './store.js';
@@ -190,6 +191,33 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
         seats,
         message,
         rngSeed: deps.rngSeed?.(),
+      });
+
+      if (!result.ok) {
+        await deps.postToConnection(connectionId, errorMessage(result.code));
+        return { statusCode: 200 };
+      }
+
+      await fanOutSeatScopedSnapshots(
+        { store: deps.store, postToConnection: deps.postToConnection },
+        result.table,
+        result.seats,
+      );
+      return { statusCode: 200 };
+    }
+
+    if (isBettingAction(message.action)) {
+      if (hasClientSuppliedState(message)) {
+        await deps.postToConnection(connectionId, errorMessage('client_supplied_state'));
+        return { statusCode: 200 };
+      }
+
+      const result = await handleAct({
+        store: deps.store,
+        connection,
+        table,
+        seats,
+        message,
       });
 
       if (!result.ok) {
