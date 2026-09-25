@@ -160,16 +160,19 @@ function createHarness(rngSeed = 7) {
     store,
     postToConnection,
     now: () => '2026-09-25T12:00:00.000Z',
-    randomTableId: () => 'table-1',
     rngSeed: () => rngSeed,
   });
 
   return { handler, store, sent, postToConnection };
 }
 
-async function setupTable(handler: ReturnType<typeof createHarness>['handler']) {
+async function setupTable(
+  handler: ReturnType<typeof createHarness>['handler'],
+  store: MatchStore,
+) {
+  await store.createTable('table-1', '2026-09-25T12:00:00.000Z');
   await handler(wsEvent('$connect', 'conn-a'), {});
-  await handler(wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })), {});
+  await store.bindConnectionToTable('conn-a', 'table-1');
   await handler(wsEvent('$connect', 'conn-b'), {});
   await handler(
     wsEvent('$default', 'conn-b', JSON.stringify({ action: 'join_table', tableId: 'table-1' })),
@@ -212,7 +215,7 @@ async function startHeadsUpHand(
 describe('all-in settle on serverless runtime', () => {
   it('heads-up all-in runout settles in one act with chip conservation', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -250,7 +253,7 @@ describe('all-in settle on serverless runtime', () => {
 
   it('rejects client_supplied_state without version change or extra fan-out', async () => {
     const { handler, store, sent, postToConnection } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 

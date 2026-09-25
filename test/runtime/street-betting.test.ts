@@ -163,16 +163,19 @@ function createHarness(rngSeed = 7) {
     store,
     postToConnection,
     now: () => '2026-09-25T12:00:00.000Z',
-    randomTableId: () => 'table-1',
     rngSeed: () => rngSeed,
   });
 
   return { handler, store, sent, postToConnection };
 }
 
-async function setupTable(handler: ReturnType<typeof createHarness>['handler']) {
+async function setupTable(
+  handler: ReturnType<typeof createHarness>['handler'],
+  store: MatchStore,
+) {
+  await store.createTable('table-1', '2026-09-25T12:00:00.000Z');
   await handler(wsEvent('$connect', 'conn-a'), {});
-  await handler(wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })), {});
+  await store.bindConnectionToTable('conn-a', 'table-1');
   await handler(wsEvent('$connect', 'conn-b'), {});
   await handler(
     wsEvent('$default', 'conn-b', JSON.stringify({ action: 'join_table', tableId: 'table-1' })),
@@ -219,7 +222,7 @@ async function startHeadsUpHand(
 describe('street betting on serverless runtime', () => {
   it('legal fold, check, call, bet, and raise advance the current seat', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -244,7 +247,7 @@ describe('street betting on serverless runtime', () => {
 
   it('auto-deals flop, turn, and river when betting rounds complete with two players in', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -283,7 +286,7 @@ describe('street betting on serverless runtime', () => {
 
   it('completing river betting settles the hand with stacks updated', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -320,7 +323,7 @@ describe('street betting on serverless runtime', () => {
 
   it('fold to one settles immediately with pot awarded and no board', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -342,7 +345,7 @@ describe('street betting on serverless runtime', () => {
 
   it('rejects actions after complete without mutation or fan-out', async () => {
     const { handler, store, sent, postToConnection } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -364,7 +367,7 @@ describe('street betting on serverless runtime', () => {
 
   it('rejects bet below minimum and raise below minimum raise-to', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -398,7 +401,7 @@ describe('street betting on serverless runtime', () => {
 
   it('rejects check facing bet, call when nothing owed, bet facing bet, and raise with nothing faced', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -460,7 +463,7 @@ describe('street betting on serverless runtime', () => {
 
   it('rejects off-turn actions without mutation and accepts legal all-in', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -485,7 +488,7 @@ describe('street betting on serverless runtime', () => {
 
   it('rejects client_supplied_state on betting actions', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -504,7 +507,7 @@ describe('street betting on serverless runtime', () => {
 
   it('uses one conditional write and fans out seat-scoped snapshots on street-completing success', async () => {
     const { handler, store, sent, postToConnection } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -528,7 +531,7 @@ describe('street betting on serverless runtime', () => {
 
   it('snapshots hide foreign holes at terminal phases and omit deck or burns', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -562,7 +565,7 @@ describe('street betting on serverless runtime', () => {
 
   it('postflop first to act is big blind heads-up after preflop completes', async () => {
     const { handler, store, sent } = createHarness(7);
-    await setupTable(handler);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
@@ -585,8 +588,8 @@ describe('street betting on serverless runtime', () => {
   });
 
   it('does not fan out snapshots on rejection', async () => {
-    const { handler, sent, postToConnection } = createHarness(7);
-    await setupTable(handler);
+    const { handler, store, sent, postToConnection } = createHarness(7);
+    await setupTable(handler, store);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 

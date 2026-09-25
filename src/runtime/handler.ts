@@ -1,6 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { randomUUID } from 'node:crypto';
 import { createPostToConnection, fanOutSeatScopedSnapshots } from './fanout.js';
 import {
   hasClientSuppliedState,
@@ -26,7 +25,6 @@ export interface RuntimeDeps {
     message: OutboundMessage,
   ) => Promise<void>;
   now: () => string;
-  randomTableId: () => string;
   rngSeed?: () => number;
 }
 
@@ -61,14 +59,7 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
     }
 
     if (message.action === 'create_table') {
-      const tableId = deps.randomTableId();
-      const createdAt = deps.now();
-      const table = await deps.store.createTable(tableId, createdAt);
-      await deps.store.bindConnectionToTable(connectionId, table.tableId);
-      await deps.postToConnection(connectionId, {
-        type: 'table_created',
-        tableId: table.tableId,
-      });
+      await deps.postToConnection(connectionId, errorMessage('unsupported_action'));
       return { statusCode: 200 };
     }
 
@@ -275,7 +266,6 @@ export async function handler(
     store: cachedStore,
     postToConnection: createPostToConnection(event, cachedEnv.awsRegion),
     now: () => new Date().toISOString(),
-    randomTableId: () => randomUUID(),
   });
 
   return runtimeHandler(event, context);
