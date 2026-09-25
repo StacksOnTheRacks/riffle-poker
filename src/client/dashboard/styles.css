@@ -145,3 +145,96 @@
     flex-direction: column;
   }
 }
+
+.my-hand-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.my-hand-pocket {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.my-hand-pocket-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  min-height: 3.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+}
+
+.my-hand-pocket-card-rank-suit {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.my-hand-bank,
+.my-hand-session,
+.my-hand-committed,
+.my-hand-strength,
+.my-hand-outs,
+.my-hand-action-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.my-hand-bank-label,
+.my-hand-session-label,
+.my-hand-committed-label,
+.my-hand-strength-label {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.my-hand-bank-amount,
+.my-hand-session-amount,
+.my-hand-committed-amount,
+.my-hand-made-hand,
+.my-hand-tier,
+.my-hand-outs-phrase {
+  font-size: 0.875rem;
+}
+
+.my-hand-meter {
+  display: flex;
+  gap: 0.125rem;
+}
+
+.my-hand-meter-segment {
+  flex: 1;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.2;
+}
+
+.my-hand-meter-segment[data-filled='true'] {
+  opacity: 0.85;
+}
+
+.my-hand-action-log-heading {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.my-hand-action-log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.my-hand-action-log-row {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
