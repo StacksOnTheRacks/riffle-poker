@@ -1,14 +1,19 @@
 import { err, ok } from './errors.js';
 import {
-  getHandMeta,
   maxBetOrRaiseAmount,
   minOpeningWager,
   minRaiseTo,
-  seatIndex,
   stillInSeats,
   toCall,
 } from './state.js';
-import type { Action, HandState, LegalizedAction, Result, SeatState } from './types.js';
+import type {
+  Action,
+  HandState,
+  LegalizedAction,
+  Result,
+  RulesOptions,
+  SeatState,
+} from './types.js';
 
 function actorSeat(state: HandState, seatId: string): SeatState | null {
   const seat = state.seats.find((s) => s.seatId === seatId);
@@ -32,10 +37,6 @@ function validateActionShape(action: Action): Result<void> {
   }
 }
 
-function facingBet(state: HandState, seat: SeatState): boolean {
-  return toCall(seat, state.currentBet) > 0;
-}
-
 function canBetWithoutSidePot(state: HandState, seat: SeatState, amount: number): boolean {
   const newLevel = seat.streetCommitted + amount;
   if (amount >= seat.stack) {
@@ -55,7 +56,22 @@ function canRaiseToWithoutSidePot(state: HandState, seat: SeatState, raiseTo: nu
   return maxBetOrRaiseAmount(state, seat, raiseTo) === raiseTo;
 }
 
-export function legalize(state: HandState, seatId: string, action: Action): Result<LegalizedAction> {
+function isFullStackCommit(seat: SeatState, amount: number): boolean {
+  return amount === seat.stack;
+}
+
+function isFullStackRaiseTo(seat: SeatState, raiseTo: number): boolean {
+  return raiseTo - seat.streetCommitted === seat.stack;
+}
+
+export function legalize(
+  state: HandState,
+  seatId: string,
+  action: Action,
+  options: RulesOptions = {},
+): Result<LegalizedAction> {
+  const allowAllIn = options.allowAllIn === true;
+
   if (state.phase === 'complete') {
     return err('already_complete', 'hand is already complete');
   }
@@ -94,6 +110,15 @@ export function legalize(state: HandState, seatId: string, action: Action): Resu
       if (callAmount <= 0) {
         return err('illegal_action', 'nothing to call');
       }
+      if (callAmount > seat.stack) {
+        return err('illegal_action', 'insufficient stack to call');
+      }
+      if (callAmount === seat.stack) {
+        if (!allowAllIn) {
+          return err('all_in_or_side_pot_unsupported', 'call would all-in or create a side pot');
+        }
+        return ok({ type: 'call', amount: callAmount });
+      }
       if (seat.stack <= callAmount) {
         return err('all_in_or_side_pot_unsupported', 'call would all-in or create a side pot');
       }
@@ -103,8 +128,14 @@ export function legalize(state: HandState, seatId: string, action: Action): Resu
       if (callAmount > 0 || state.currentBet > 0) {
         return err('illegal_action', 'cannot bet while facing a bet');
       }
-      if (action.amount < minOpen) {
+      if (action.amount < minOpen && action.amount !== seat.stack) {
         return err('illegal_action', 'bet below minimum');
+      }
+      if (isFullStackCommit(seat, action.amount)) {
+        if (!allowAllIn) {
+          return err('all_in_or_side_pot_unsupported', 'bet would all-in or create a side pot');
+        }
+        return ok({ type: 'bet', amount: action.amount });
       }
       if (!canBetWithoutSidePot(state, seat, action.amount)) {
         return err('all_in_or_side_pot_unsupported', 'bet would all-in or create a side pot');
@@ -114,6 +145,15 @@ export function legalize(state: HandState, seatId: string, action: Action): Resu
     case 'raise': {
       if (callAmount <= 0) {
         return err('illegal_action', 'nothing to raise');
+      }
+      if (isFullStackRaiseTo(seat, action.amount)) {
+        if (!allowAllIn) {
+          return err('all_in_or_side_pot_unsupported', 'raise would all-in or create a side pot');
+        }
+        if (action.amount < seat.streetCommitted + callAmount) {
+          return err('illegal_action', 'raise below call amount');
+        }
+        return ok({ type: 'raise', amount: action.amount });
       }
       if (action.amount < minRaise) {
         return err('illegal_action', 'raise below minimum');
@@ -129,13 +169,19 @@ export function legalize(state: HandState, seatId: string, action: Action): Resu
   }
 }
 
-export function legalActions(state: HandState, seatId: string): LegalizedAction[] {
+export function legalActions(
+  state: HandState,
+  seatId: string,
+  options: RulesOptions = {},
+): LegalizedAction[] {
+  const allowAllIn = options.allowAllIn === true;
+
   if (state.phase !== 'betting' || state.currentSeatId !== seatId) {
     return [];
   }
 
   const seat = actorSeat(state, seatId);
-  if (!seat || seat.folded) {
+  if (!seat || seat.folded || seat.allIn || seat.stack === 0) {
     return [];
   }
 
@@ -145,14 +191,25 @@ export function legalActions(state: HandState, seatId: string): LegalizedAction[
   if (callAmount === 0) {
     actions.push({ type: 'check' });
     const minBet = minOpeningWager(state);
-    if (state.currentBet === 0 && canBetWithoutSidePot(state, seat, minBet)) {
-      actions.push({ type: 'bet', amount: minBet });
+    if (state.currentBet === 0) {
+      if (canBetWithoutSidePot(state, seat, minBet)) {
+        actions.push({ type: 'bet', amount: minBet });
+      } else if (allowAllIn && seat.stack >= minBet) {
+        actions.push({ type: 'bet', amount: seat.stack });
+      }
     }
-  } else if (seat.stack > callAmount) {
-    actions.push({ type: 'call', amount: callAmount });
-    const minRaise = minRaiseTo(state);
-    if (canRaiseToWithoutSidePot(state, seat, minRaise)) {
-      actions.push({ type: 'raise', amount: minRaise });
+  } else {
+    if (seat.stack > callAmount) {
+      actions.push({ type: 'call', amount: callAmount });
+      const minRaise = minRaiseTo(state);
+      if (canRaiseToWithoutSidePot(state, seat, minRaise)) {
+        actions.push({ type: 'raise', amount: minRaise });
+      }
+    } else if (allowAllIn && seat.stack === callAmount) {
+      actions.push({ type: 'call', amount: callAmount });
+    } else if (allowAllIn && seat.stack > callAmount) {
+      actions.push({ type: 'call', amount: callAmount });
+      actions.push({ type: 'raise', amount: seat.streetCommitted + seat.stack });
     }
   }
 

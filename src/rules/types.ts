@@ -55,11 +55,22 @@ export type DealConfig = {
   rng: Rng;
 };
 
+export type RulesOptions = {
+  allowAllIn?: boolean;
+};
+
+export type Pot = {
+  label: string;
+  amount: number;
+  eligibleSeatIds: string[];
+};
+
 export type SeatState = {
   seatId: string;
   stack: number;
   hole: [Card, Card];
   folded: boolean;
+  allIn?: boolean;
   streetCommitted: number;
   handCommitted: number;
 };
@@ -79,6 +90,7 @@ export type HandState = {
   currentSeatId: string | null;
   board: Card[];
   pot: number;
+  pots?: Pot[];
   currentBet: number;
   lastRaiseSize: number;
   deckRemaining: Card[];

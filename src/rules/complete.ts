@@ -1,13 +1,11 @@
-import { compareEvaluated, evaluateSeven } from './rank.js';
 import { err, ok } from './errors.js';
+import { cloneHandState, stillInSeats } from './state.js';
 import {
-  awardRemainderClockwiseFromButton,
-  cloneHandState,
-  seatIndex,
-  stillInSeats,
-} from './state.js';
-import type { EvaluatedHand } from './rank.js';
-import type { HandState, Result, Winner } from './types.js';
+  applyAwards,
+  mergeWinnersBySeat,
+  settlePots,
+} from './pots.js';
+import type { HandState, Result } from './types.js';
 
 export function completeFoldToOne(state: HandState): Result<HandState> {
   if (state.phase === 'complete') {
@@ -23,14 +21,13 @@ export function completeFoldToOne(state: HandState): Result<HandState> {
   }
 
   const next = cloneHandState(state);
-  const winner = stillInSeats(next)[0];
-  const amount = next.pot;
-  winner.stack += amount;
-  next.pot = 0;
+  const { pots, winners } = settlePots(next);
+  applyAwards(next, winners);
+  next.pots = pots;
   next.phase = 'complete';
   next.completeReason = 'fold_to_one';
   next.currentSeatId = null;
-  next.winners = [{ seatId: winner.seatId, amount }];
+  next.winners = mergeWinnersBySeat(winners);
 
   return ok(next);
 }
@@ -50,47 +47,15 @@ export function showdown(state: HandState): Result<HandState> {
   if (stillIn.length < 2) {
     return err('not_showdown', 'showdown requires at least two seats');
   }
-  if (stillIn.some((s) => s.stack === 0)) {
-    return err('not_showdown', 'all-in seats are not supported');
-  }
-
-  const evaluations = new Map<string, EvaluatedHand>();
-  for (const seat of stillIn) {
-    evaluations.set(seat.seatId, evaluateSeven(seat.hole, state.board));
-  }
-
-  let best: EvaluatedHand | null = null;
-  for (const evald of evaluations.values()) {
-    if (!best || compareEvaluated(evald, best) > 0) {
-      best = evald;
-    }
-  }
-
-  const winnersIds = stillIn
-    .filter((s) => compareEvaluated(evaluations.get(s.seatId)!, best!) === 0)
-    .map((s) => s.seatId);
 
   const next = cloneHandState(state);
-  const pot = next.pot;
-  const baseShare = Math.floor(pot / winnersIds.length);
-  const remainder = pot - baseShare * winnersIds.length;
-  const extra = awardRemainderClockwiseFromButton(next, winnersIds, remainder);
-
-  const winners: Winner[] = winnersIds.map((seatId) => ({
-    seatId,
-    amount: baseShare + (extra.get(seatId) ?? 0),
-    rankName: evaluations.get(seatId)!.rankName,
-  }));
-
-  for (const winner of winners) {
-    next.seats[seatIndex(next, winner.seatId)].stack += winner.amount;
-  }
-
-  next.pot = 0;
+  const { pots, winners } = settlePots(next);
+  applyAwards(next, winners);
+  next.pots = pots;
   next.phase = 'complete';
   next.completeReason = 'showdown';
   next.currentSeatId = null;
-  next.winners = winners;
+  next.winners = mergeWinnersBySeat(winners);
 
   return ok(next);
 }

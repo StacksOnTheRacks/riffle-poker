@@ -4,6 +4,7 @@ import type {
   ConnectionRecord,
   PlayerSnapshotSeat,
   SeatRecord,
+  SnapshotPot,
   TableRecord,
   TableSnapshotMessage,
 } from './types.js';
@@ -29,6 +30,41 @@ function seatPosition(
   return null;
 }
 
+function snapshotPots(table: TableRecord, handState: NonNullable<ReturnType<typeof rehydrateHandState>>): SnapshotPot[] | undefined {
+  const source = handState.pots ?? table.pots;
+  if (!source || source.length === 0) {
+    return undefined;
+  }
+  if (source.length === 1) {
+    return undefined;
+  }
+  return source.map((pot) => ({
+    label: pot.label,
+    amount: pot.amount,
+  }));
+}
+
+function winnerAmountForSeat(
+  table: TableRecord,
+  handState: NonNullable<ReturnType<typeof rehydrateHandState>>,
+  seatId: string,
+): number | undefined {
+  const winners = handState.winners ?? table.winners;
+  const winner = winners?.find((row) => row.seatId === seatId);
+  return winner?.amount;
+}
+
+function shouldRevealHoleCards(
+  table: TableRecord,
+  handState: NonNullable<ReturnType<typeof rehydrateHandState>>,
+  seat: SeatRecord,
+): boolean {
+  if (handState.completeReason !== 'showdown' || handState.phase !== 'complete') {
+    return false;
+  }
+  return !seat.folded && Boolean(seat.hole);
+}
+
 export function buildSeatScopedSnapshot(
   table: TableRecord,
   seats: SeatRecord[],
@@ -37,21 +73,39 @@ export function buildSeatScopedSnapshot(
   const occupied = seats.filter((seat) => seat.displayName);
   const handState = rehydrateHandState(table, occupied);
   const viewerSeatId = viewer?.seatId ?? null;
+  const isComplete = handState?.phase === 'complete';
 
-  const playerSeats: PlayerSnapshotSeat[] = occupied.map((seat) => ({
-    seatId: seat.seatId,
-    displayName: seat.displayName,
-    isLocal: seat.seatId === viewerSeatId,
-    stack: seat.stack,
-    inHand: table.status === 'hand_in_progress' && Boolean(seat.hole) && !seat.folded,
-    committed: seat.streetCommitted ?? 0,
-    position:
-      handState && table.buttonSeatId
-        ? seatPosition(seat.seatId, table.buttonSeatId, handState)
-        : null,
-    acting: table.currentSeatId === seat.seatId,
-    folded: seat.folded ?? false,
-  }));
+  const playerSeats: PlayerSnapshotSeat[] = occupied.map((seat) => {
+    const handSeat = handState?.seats.find((row) => row.seatId === seat.seatId);
+    const snapshotSeat: PlayerSnapshotSeat = {
+      seatId: seat.seatId,
+      displayName: seat.displayName,
+      isLocal: seat.seatId === viewerSeatId,
+      stack: seat.stack,
+      inHand: table.status === 'hand_in_progress' && Boolean(seat.hole) && !seat.folded,
+      committed: seat.streetCommitted ?? 0,
+      position:
+        handState && table.buttonSeatId
+          ? seatPosition(seat.seatId, table.buttonSeatId, handState)
+          : null,
+      acting: !isComplete && table.currentSeatId === seat.seatId,
+      folded: seat.folded ?? false,
+      allIn: seat.allIn ?? handSeat?.allIn ?? false,
+    };
+
+    if (handState && isComplete) {
+      const wonAmount = winnerAmountForSeat(table, handState, seat.seatId);
+      if (wonAmount !== undefined && wonAmount > 0) {
+        snapshotSeat.wonAmount = wonAmount;
+      }
+    }
+
+    if (handState && shouldRevealHoleCards(table, handState, seat)) {
+      snapshotSeat.holeCards = [seat.hole![0], seat.hole![1]];
+    }
+
+    return snapshotSeat;
+  });
 
   const snapshot: TableSnapshotMessage = {
     type: 'table_snapshot',
@@ -65,13 +119,21 @@ export function buildSeatScopedSnapshot(
     seatedPlayersLabel: `${occupied.length} / ${table.maxSeats}`,
     pot: table.pot ?? 0,
     buttonSeatId: table.buttonSeatId ?? null,
-    currentSeatId: table.currentSeatId ?? null,
+    currentSeatId: isComplete ? null : (table.currentSeatId ?? null),
     seats: playerSeats,
   };
 
   if (table.status === 'hand_in_progress') {
     snapshot.phase = table.phase ?? 'betting';
     snapshot.board = [...(table.board ?? [])];
+    snapshot.completeReason = handState?.completeReason ?? table.completeReason ?? null;
+
+    if (handState) {
+      const pots = snapshotPots(table, handState);
+      if (pots) {
+        snapshot.pots = pots;
+      }
+    }
   }
 
   if (viewerSeatId && handState) {

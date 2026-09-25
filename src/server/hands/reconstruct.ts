@@ -1,4 +1,5 @@
 import { applyAction } from '../../rules/apply.js';
+import { returnUncalledChips } from '../../rules/pots.js';
 import {
   bigBlindSeatId,
   firstToActPostflop,
@@ -174,6 +175,7 @@ function applyHandCompleteFromLog(
   }
 
   const stillInBefore = state.seats.filter((seat) => !seat.folded).map((seat) => seat.seatId);
+  returnUncalledChips(state);
   const prePot = state.pot;
   let winnerSum = 0;
   const seenWinnerIds = new Set<string>();

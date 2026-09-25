@@ -7,12 +7,16 @@ export interface PlayerRowSeat {
   avatarUrl?: string;
   stack: number;
   inHand: boolean;
+  allIn?: boolean;
   lastAction: string | null;
   committed: number;
   position: PlayerRowPosition | null;
   acting: boolean;
   turnRemainingMs: number | null;
   turnBudgetMs: number | null;
+  wonAmount?: number;
+  holeCards?: Array<{ rank: string; suit: 'h' | 'd' | 'c' | 's' }>;
+  phase?: 'betting' | 'complete';
 }
 
 export type DashboardBreakpoint = 'desktop' | 'tablet' | 'phone';
@@ -68,7 +72,9 @@ function createTextField(
     | 'position'
     | 'timer'
     | 'initials'
-    | 'fold',
+    | 'fold'
+    | 'all-in'
+    | 'won',
   text: string,
 ): HTMLElement {
   const element = document.createElement('span');
@@ -105,6 +111,38 @@ function createAvatarField(avatarUrl: string): HTMLElement {
   avatar.src = avatarUrl;
   avatar.alt = '';
   return avatar;
+}
+
+function isHoleFaceCard(
+  card: unknown,
+): card is { rank: string; suit: 'h' | 'd' | 'c' | 's' } {
+  return (
+    typeof card === 'object' &&
+    card !== null &&
+    'rank' in card &&
+    'suit' in card &&
+    typeof (card as { rank: unknown }).rank === 'string' &&
+    typeof (card as { suit: unknown }).suit === 'string'
+  );
+}
+
+function createCardFaces(
+  cards: Array<{ rank: string; suit: 'h' | 'd' | 'c' | 's' }>,
+): HTMLElement {
+  const cardsEl = document.createElement('div');
+  cardsEl.dataset.field = 'cards';
+  cardsEl.dataset.cards = 'faces';
+  cardsEl.className = 'player-row-card-faces';
+
+  for (const card of cards) {
+    const face = document.createElement('span');
+    face.className = 'player-row-card-face';
+    face.textContent = `${card.rank.toUpperCase()}${card.suit === 'h' ? '♥' : card.suit === 'd' ? '♦' : card.suit === 'c' ? '♣' : '♠'}`;
+    face.setAttribute('aria-hidden', 'true');
+    cardsEl.append(face);
+  }
+
+  return cardsEl;
 }
 
 function createCardBacks(): HTMLElement {
@@ -168,7 +206,7 @@ function createSeatTile(
     tile.dataset.acting = 'true';
   }
 
-  tile.dataset.state = seat.inHand ? 'in-hand' : 'folded';
+  tile.dataset.state = seat.inHand ? (seat.allIn ? 'all-in' : 'in-hand') : 'folded';
 
   if (seat.avatarUrl) {
     tile.append(createAvatarField(seat.avatarUrl));
@@ -180,6 +218,17 @@ function createSeatTile(
   tile.append(createTextField('name', nameText));
 
   tile.append(createStackField(breakpoint, seat.stack));
+
+  if (seat.allIn && seat.inHand) {
+    tile.append(createTextField('all-in', 'All-in'));
+  }
+
+  if (seat.wonAmount !== undefined && seat.wonAmount > 0) {
+    const won = createTextField('won', `Won ${formatPlayChips(seat.wonAmount)}`);
+    won.setAttribute('role', 'status');
+    won.setAttribute('aria-live', 'polite');
+    tile.append(won);
+  }
 
   if (seat.lastAction) {
     tile.append(createTextField('last-action', seat.lastAction));
@@ -198,7 +247,14 @@ function createSeatTile(
   }
 
   if (!seat.isLocal && breakpoint !== 'phone') {
-    if (seat.inHand) {
+    if (
+      seat.holeCards &&
+      seat.holeCards.length === 2 &&
+      isHoleFaceCard(seat.holeCards[0]) &&
+      isHoleFaceCard(seat.holeCards[1])
+    ) {
+      tile.append(createCardFaces(seat.holeCards));
+    } else if (seat.inHand) {
       tile.append(createCardBacks());
     } else {
       tile.append(createTextField('fold', 'Fold'));

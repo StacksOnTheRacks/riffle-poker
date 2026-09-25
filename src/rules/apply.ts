@@ -8,18 +8,18 @@ import {
   seatIndex,
   stillInSeats,
 } from './state.js';
-import type { Action, HandState, LegalizedAction, Result } from './types.js';
+import { seatsWithChipsRemaining } from './pots.js';
+import type { Action, HandState, LegalizedAction, Result, RulesOptions } from './types.js';
 
-function commitChips(
-  state: HandState,
-  seatId: string,
-  amount: number,
-): void {
+function commitChips(state: HandState, seatId: string, amount: number): void {
   const seat = state.seats[seatIndex(state, seatId)];
   seat.stack -= amount;
   seat.streetCommitted += amount;
   seat.handCommitted += amount;
   state.pot += amount;
+  if (seat.stack === 0) {
+    seat.allIn = true;
+  }
 }
 
 function applyLegalized(state: HandState, seatId: string, action: LegalizedAction): void {
@@ -38,8 +38,16 @@ function applyLegalized(state: HandState, seatId: string, action: LegalizedActio
     case 'bet': {
       const previousBet = state.currentBet;
       commitChips(state, seatId, action.amount);
-      state.currentBet = state.seats[seatIndex(state, seatId)].streetCommitted;
-      state.lastRaiseSize = state.currentBet - previousBet;
+      const seat = state.seats[seatIndex(state, seatId)];
+      const newBet = seat.streetCommitted;
+      const increment = newBet - previousBet;
+      if (increment >= state.lastRaiseSize) {
+        state.lastRaiseSize = increment;
+        meta.shortAllInMatchedFromBet = null;
+      } else {
+        meta.shortAllInMatchedFromBet = previousBet;
+      }
+      state.currentBet = newBet;
       meta.lastAggressorSeatId = seatId;
       break;
     }
@@ -48,8 +56,14 @@ function applyLegalized(state: HandState, seatId: string, action: LegalizedActio
       const seat = state.seats[seatIndex(state, seatId)];
       const chipsToAdd = action.amount - seat.streetCommitted;
       commitChips(state, seatId, chipsToAdd);
+      const increment = action.amount - previousBet;
+      if (increment >= state.lastRaiseSize) {
+        state.lastRaiseSize = increment;
+        meta.shortAllInMatchedFromBet = null;
+      } else {
+        meta.shortAllInMatchedFromBet = previousBet;
+      }
       state.currentBet = action.amount;
-      state.lastRaiseSize = state.currentBet - previousBet;
       meta.lastAggressorSeatId = seatId;
       break;
     }
@@ -83,8 +97,13 @@ function closeOrContinueBetting(state: HandState): void {
   state.currentSeatId = null;
 }
 
-export function applyAction(state: HandState, seatId: string, action: Action): Result<HandState> {
-  const legal = legalize(state, seatId, action);
+export function applyAction(
+  state: HandState,
+  seatId: string,
+  action: Action,
+  options: RulesOptions = {},
+): Result<HandState> {
+  const legal = legalize(state, seatId, action, options);
   if (!legal.ok) {
     return legal as Result<HandState>;
   }
@@ -93,4 +112,19 @@ export function applyAction(state: HandState, seatId: string, action: Action): R
   applyLegalized(next, seatId, legal.value);
   closeOrContinueBetting(next);
   return ok(next);
+}
+
+export function needsAutoRunOut(state: HandState): boolean {
+  if (state.phase !== 'street_complete' && state.phase !== 'showdown_ready') {
+    return false;
+  }
+  return seatsWithChipsRemaining(state.seats) < 2;
+}
+
+export function canOpenNextBettingRound(state: HandState): boolean {
+  return (
+    state.phase === 'street_complete' &&
+    state.street !== 'river' &&
+    seatsWithChipsRemaining(state.seats) >= 2
+  );
 }
