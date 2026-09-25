@@ -315,3 +315,104 @@
   font-size: 0.875rem;
   font-weight: 600;
 }
+
+.action-controls-panel,
+.action-controls-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.action-controls-your-turn {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.action-controls-timer-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.action-controls-timer-progress {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.2;
+  overflow: hidden;
+  position: relative;
+}
+
+.action-controls-timer-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--timer-fraction, 0) * 100%);
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.action-controls-hint {
+  margin: 0;
+  font-size: 0.875rem;
+  opacity: 0.85;
+}
+
+.action-controls-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.action-controls-button-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.action-controls-action-button,
+.action-controls-preset-button {
+  font: inherit;
+}
+
+.action-controls-shortcut {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.action-controls-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.action-controls-preset-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.action-controls-preset-label,
+.action-controls-preset-amount {
+  font-size: 0.875rem;
+}
+
+.action-controls-slider {
+  width: 100%;
+}
+
+.action-controls-all-in-dialog {
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  max-width: 20rem;
+}
+
+.action-controls-all-in-dialog-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
