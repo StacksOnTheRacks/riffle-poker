@@ -17,3 +17,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: infra/cdk/package-lock.json
+      - run: npm ci
+        working-directory: infra/cdk
+      - run: npx cdk synth
+        working-directory: infra/cdk
+        env:
+          CDK_DEFAULT_ACCOUNT: '111111111111'
+          CDK_DEFAULT_REGION: us-east-1
