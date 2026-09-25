@@ -52,5 +52,5 @@ jobs:
         run: >
           npx cdk deploy MatchRuntimeStack
           --require-approval never
-          --qualifier rifflepk
           --toolkit-stack-name RifflePokerMatchToolkit
+          --context @aws-cdk/core:bootstrapQualifier=rifflepk
