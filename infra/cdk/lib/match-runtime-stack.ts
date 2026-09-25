@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CfnOutput,
+  CustomResource,
   Duration,
   RemovalPolicy,
   Stack,
@@ -17,6 +18,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3Deployment from 'aws-cdk-lib/aws-s3-deployment';
+import * as customResources from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -146,6 +148,45 @@ export class MatchRuntimeStack extends Stack {
 
     new CfnOutput(this, 'DashboardUrl', {
       value: `https://${distribution.distributionDomainName}`,
+    });
+
+    const seedHandler = new lambdaNodejs.NodejsFunction(this, 'SeedTableHandler', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, 'seed-table-handler.ts'),
+      projectRoot: repoRoot,
+      handler: 'handler',
+      timeout: Duration.seconds(30),
+      bundling: {
+        target: 'node22',
+        format: lambdaNodejs.OutputFormat.ESM,
+        externalModules: ['@aws-sdk/*'],
+      },
+      depsLockFilePath: path.join(repoRoot, 'package-lock.json'),
+    });
+    seedHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:PutItem'],
+        resources: [table.tableArn],
+      }),
+    );
+
+    const seedProvider = new customResources.Provider(this, 'SeedTableProvider', {
+      onEventHandler: seedHandler,
+    });
+
+    const seededTable = new CustomResource(this, 'SeededTable', {
+      serviceToken: seedProvider.serviceToken,
+      resourceType: 'Custom::SeededPokerTable',
+      properties: { TableName: table.tableName },
+    });
+    const seededTableId = seededTable.getAttString('TableId');
+
+    new CfnOutput(this, 'SeededTableId', {
+      value: seededTableId,
+    });
+
+    new CfnOutput(this, 'PlayUrl', {
+      value: `https://${distribution.distributionDomainName}/${seededTableId}`,
     });
   }
 }
