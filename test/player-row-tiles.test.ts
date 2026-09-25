@@ -274,4 +274,32 @@ describe('player row tiles', () => {
     expect(root.querySelector('[data-field="timer"]')).toBeNull();
     expect(root.querySelector('[role="status"]')).toBeNull();
   });
+
+  it.each([
+    ['desktop', 1280, 832],
+    ['tablet', 834, 1194],
+    ['phone', 402, 874],
+  ])('shows all-in text and Won amount at %s', (_label, width, height) => {
+    const root = renderAtViewport(width, height, [
+      baseSeat({
+        seatId: 's1',
+        displayName: 'Riley',
+        stack: 0,
+        inHand: true,
+        allIn: true,
+      }),
+      baseSeat({
+        seatId: 's2',
+        displayName: 'Sam',
+        stack: 2500,
+        inHand: true,
+        wonAmount: 1800,
+        phase: 'complete',
+      }),
+    ]);
+
+    expect(root.textContent).toContain('All-in');
+    expect(root.textContent).toContain('$0');
+    expect(root.textContent).toContain('Won $1,800');
+  });
 });

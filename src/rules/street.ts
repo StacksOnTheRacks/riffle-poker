@@ -12,6 +12,41 @@ function drawFromDeck(state: HandState, count: number): Card[] {
   return drawn;
 }
 
+export function runOutRemainingStreets(state: HandState): Result<HandState> {
+  if (state.phase === 'complete') {
+    return err('already_complete', 'hand is already complete');
+  }
+
+  const next = cloneHandState(state);
+
+  while (next.board.length < 5) {
+    const burn = drawFromDeck(next, 1);
+    next.burns.push(...burn);
+
+    if (next.street === 'preflop') {
+      next.board.push(...drawFromDeck(next, 3));
+      next.street = 'flop';
+    } else if (next.street === 'flop') {
+      next.board.push(...drawFromDeck(next, 1));
+      next.street = 'turn';
+    } else if (next.street === 'turn') {
+      next.board.push(...drawFromDeck(next, 1));
+      next.street = 'river';
+    } else {
+      return err('cannot_advance', 'cannot run out beyond the river');
+    }
+
+    for (const seat of next.seats) {
+      seat.streetCommitted = 0;
+    }
+    next.currentBet = 0;
+  }
+
+  next.phase = 'showdown_ready';
+  next.currentSeatId = null;
+  return ok(next);
+}
+
 export function advanceStreet(state: HandState): Result<HandState> {
   if (state.phase === 'complete') {
     return err('already_complete', 'hand is already complete');

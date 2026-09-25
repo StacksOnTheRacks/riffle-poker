@@ -281,7 +281,7 @@ describe('street betting on serverless runtime', () => {
     expect((await store.getTable('table-1'))?.street).toBe('river');
   });
 
-  it('completing river betting sets showdown_ready without awarding the pot', async () => {
+  it('completing river betting settles the hand with stacks updated', async () => {
     const { handler, store, sent } = createHarness(7);
     await setupTable(handler);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
@@ -309,22 +309,21 @@ describe('street betting on serverless runtime', () => {
     const table = await store.getTable('table-1');
     const seatA = await store.getSeat('table-1', '1');
     const seatB = await store.getSeat('table-1', '4');
-    expect(table?.phase).toBe('showdown_ready');
+    expect(table?.phase).toBe('complete');
+    expect(table?.completeReason).toBe('showdown');
     expect(table?.currentSeatId).toBeNull();
     expect(table?.board).toHaveLength(5);
-    expect(table?.pot).toBeGreaterThan(0);
+    expect(table?.pot).toBe(0);
     expect((seatA!.stack + seatB!.stack + table!.pot!)).toBe(4000);
-    expect(seatA!.stack).toBe(1998);
-    expect(seatB!.stack).toBe(1998);
+    expect(seatA!.stack + seatB!.stack).toBe(4000);
   });
 
-  it('fold to one sets fold_to_one without dealing board or awarding pot', async () => {
+  it('fold to one settles immediately with pot awarded and no board', async () => {
     const { handler, store, sent } = createHarness(7);
     await setupTable(handler);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
     await startHeadsUpHand(handler, sent, tokenA);
 
-    const potBefore = (await store.getTable('table-1'))!.pot!;
     const stackBBefore = (await store.getSeat('table-1', '4'))!.stack;
 
     await handler(
@@ -333,14 +332,15 @@ describe('street betting on serverless runtime', () => {
     );
 
     const table = await store.getTable('table-1');
-    expect(table?.phase).toBe('fold_to_one');
+    expect(table?.phase).toBe('complete');
+    expect(table?.completeReason).toBe('fold_to_one');
     expect(table?.currentSeatId).toBeNull();
     expect(table?.board).toHaveLength(0);
-    expect(table?.pot).toBe(potBefore);
-    expect((await store.getSeat('table-1', '4'))!.stack).toBe(stackBBefore);
+    expect(table?.pot).toBe(0);
+    expect((await store.getSeat('table-1', '4'))!.stack).toBeGreaterThan(stackBBefore);
   });
 
-  it('rejects actions in fold_to_one and showdown_ready without mutation or fan-out', async () => {
+  it('rejects actions after complete without mutation or fan-out', async () => {
     const { handler, store, sent, postToConnection } = createHarness(7);
     await setupTable(handler);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
@@ -458,7 +458,7 @@ describe('street betting on serverless runtime', () => {
     expect((await store.getTable('table-1'))!.version).toBe(versionOnTurn);
   });
 
-  it('rejects off-turn actions and all-in attempts without mutation', async () => {
+  it('rejects off-turn actions without mutation and accepts legal all-in', async () => {
     const { handler, store, sent } = createHarness(7);
     await setupTable(handler);
     const { tokenA, tokenB } = await sitTwoPlayers(handler, sent);
@@ -477,10 +477,10 @@ describe('street betting on serverless runtime', () => {
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'raise', seatToken: tokenA, amount: 2000 })),
       {},
     );
-    expect(sent.get('conn-a')?.at(-1)).toEqual({
-      type: 'error',
-      code: 'all_in_or_side_pot_unsupported',
-    });
+    const snap = lastSnapshot(sent.get('conn-a'));
+    expect(snap?.type).toBe('table_snapshot');
+    expect(snap?.seats.find((seat) => seat.seatId === '1')?.allIn).toBe(true);
+    expect(snap?.seats.find((seat) => seat.seatId === '1')?.stack).toBe(0);
   });
 
   it('rejects client_supplied_state on betting actions', async () => {
@@ -539,11 +539,14 @@ describe('street betting on serverless runtime', () => {
 
     const snapA = lastSnapshot(sent.get('conn-a'));
     const snapB = lastSnapshot(sent.get('conn-b'));
-    expect(snapA?.phase).toBe('fold_to_one');
-    expect(snapB?.phase).toBe('fold_to_one');
+    expect(snapA?.phase).toBe('complete');
+    expect(snapB?.phase).toBe('complete');
+    expect(snapA?.completeReason).toBe('fold_to_one');
     expect(snapA?.pocketCards).toHaveLength(2);
     expect(snapB?.pocketCards).toHaveLength(2);
     expect(snapA?.pocketCards).not.toEqual(snapB?.pocketCards);
+    expect(snapA?.seats.find((seat) => seat.seatId === '4')?.holeCards).toBeUndefined();
+    expect(snapB?.seats.find((seat) => seat.seatId === '1')?.holeCards).toBeUndefined();
 
     for (const snapshot of [snapA, snapB]) {
       const json = JSON.stringify(snapshot);

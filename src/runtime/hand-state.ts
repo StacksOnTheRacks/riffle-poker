@@ -25,6 +25,7 @@ export function rehydrateHandState(
       stack: seat.stack,
       hole: [seat.hole![0], seat.hole![1]],
       folded: seat.folded ?? false,
+      allIn: seat.allIn ?? false,
       streetCommitted: seat.streetCommitted ?? 0,
       handCommitted: seat.handCommitted ?? 0,
     })),
@@ -35,17 +36,19 @@ export function rehydrateHandState(
     currentSeatId: table.currentSeatId ?? null,
     board: [...(table.board ?? [])],
     pot: table.pot ?? 0,
+    pots: table.pots ? table.pots.map((pot) => ({ ...pot, eligibleSeatIds: [...pot.eligibleSeatIds] })) : undefined,
     currentBet,
     lastRaiseSize: table.lastRaiseSize ?? table.blinds.bigBlind,
     deckRemaining: [...(table.deckRemaining ?? [])],
     burns: [...(table.burns ?? [])],
-    winners: null,
-    completeReason: null,
+    winners: table.winners ? table.winners.map((winner) => ({ ...winner })) : null,
+    completeReason: table.completeReason ?? null,
   };
 
   const meta = getHandMeta(handState);
   meta.actedThisStreet = new Set(table.actedThisStreet ?? []);
   meta.lastAggressorSeatId = table.lastAggressorSeatId ?? null;
+  meta.shortAllInMatchedFromBet = table.shortAllInMatchedFromBet ?? null;
 
   return handState;
 }
@@ -61,6 +64,13 @@ export function extractHandMeta(table: TableRecord, handState: HandState): Table
     burns: [...handState.burns],
     actedThisStreet: [...meta.actedThisStreet],
     lastAggressorSeatId: meta.lastAggressorSeatId,
+    shortAllInMatchedFromBet: meta.shortAllInMatchedFromBet,
+    pots: handState.pots?.map((pot) => ({
+      ...pot,
+      eligibleSeatIds: [...pot.eligibleSeatIds],
+    })),
+    winners: handState.winners ? handState.winners.map((winner) => ({ ...winner })) : null,
+    completeReason: handState.completeReason,
   };
 }
 
@@ -75,6 +85,7 @@ export function applyHandStateToSeats(handState: HandState, seats: SeatRecord[])
       stack: handSeat.stack,
       hole: [handSeat.hole[0], handSeat.hole[1]] as [Card, Card],
       folded: handSeat.folded,
+      allIn: handSeat.allIn ?? false,
       streetCommitted: handSeat.streetCommitted,
       handCommitted: handSeat.handCommitted,
     };

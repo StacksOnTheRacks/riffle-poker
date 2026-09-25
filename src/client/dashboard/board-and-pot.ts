@@ -10,8 +10,10 @@ export interface BoardAndPotViewModel {
   /** Ignored — fixtures may include hole cards to prove they never render here. */
   holeCards?: BoardCard[];
   pot?: number;
+  pots?: Array<{ label: string; amount: number }>;
   playersInHand?: number;
   actionOnYou?: boolean;
+  phase?: 'betting' | 'complete' | 'street_complete' | 'fold_to_one' | 'showdown_ready';
 }
 
 type DashboardBreakpoint = 'desktop' | 'tablet' | 'phone';
@@ -145,18 +147,40 @@ function createPotSection(
   potSection.className = 'board-pot';
   potSection.dataset.field = 'pot-section';
 
-  const potLabel = document.createElement('span');
-  potLabel.className = 'board-pot-label';
-  potLabel.dataset.field = 'pot-label';
-  potLabel.textContent = 'Pot';
-  potSection.append(potLabel);
+  if (viewModel.pots && viewModel.pots.length > 1) {
+    for (const pot of viewModel.pots) {
+      const row = document.createElement('div');
+      row.className = 'board-pot-row';
+      row.dataset.field = 'pot-row';
 
-  if (viewModel.pot !== undefined) {
-    const potAmount = document.createElement('span');
-    potAmount.className = 'board-pot-amount';
-    potAmount.dataset.field = 'pot-amount';
-    potAmount.textContent = formatPlayChips(viewModel.pot);
-    potSection.append(potAmount);
+      const potLabel = document.createElement('span');
+      potLabel.className = 'board-pot-label';
+      potLabel.dataset.field = 'pot-label';
+      potLabel.textContent = pot.label;
+      row.append(potLabel);
+
+      const potAmount = document.createElement('span');
+      potAmount.className = 'board-pot-amount';
+      potAmount.dataset.field = 'pot-amount';
+      potAmount.textContent = formatPlayChips(pot.amount);
+      row.append(potAmount);
+
+      potSection.append(row);
+    }
+  } else {
+    const potLabel = document.createElement('span');
+    potLabel.className = 'board-pot-label';
+    potLabel.dataset.field = 'pot-label';
+    potLabel.textContent = 'Pot';
+    potSection.append(potLabel);
+
+    if (viewModel.pot !== undefined) {
+      const potAmount = document.createElement('span');
+      potAmount.className = 'board-pot-amount';
+      potAmount.dataset.field = 'pot-amount';
+      potAmount.textContent = formatPlayChips(viewModel.pot);
+      potSection.append(potAmount);
+    }
   }
 
   if (includeMeta) {
@@ -230,18 +254,40 @@ function renderPhone(panel: HTMLElement, viewModel: BoardAndPotViewModel): void 
   potRow.className = 'board-phone-pot';
   potRow.dataset.field = 'phone-pot';
 
-  const potLabel = document.createElement('span');
-  potLabel.className = 'board-pot-label';
-  potLabel.dataset.field = 'pot-label';
-  potLabel.textContent = 'Pot';
-  potRow.append(potLabel);
+  if (viewModel.pots && viewModel.pots.length > 1) {
+    for (const pot of viewModel.pots) {
+      const row = document.createElement('div');
+      row.className = 'board-pot-row';
+      row.dataset.field = 'pot-row';
 
-  if (viewModel.pot !== undefined) {
-    const potAmount = document.createElement('span');
-    potAmount.className = 'board-pot-amount';
-    potAmount.dataset.field = 'pot-amount';
-    potAmount.textContent = formatPlayChips(viewModel.pot);
-    potRow.append(potAmount);
+      const potLabel = document.createElement('span');
+      potLabel.className = 'board-pot-label';
+      potLabel.dataset.field = 'pot-label';
+      potLabel.textContent = pot.label;
+      row.append(potLabel);
+
+      const potAmount = document.createElement('span');
+      potAmount.className = 'board-pot-amount';
+      potAmount.dataset.field = 'pot-amount';
+      potAmount.textContent = formatPlayChips(pot.amount);
+      row.append(potAmount);
+
+      potRow.append(row);
+    }
+  } else {
+    const potLabel = document.createElement('span');
+    potLabel.className = 'board-pot-label';
+    potLabel.dataset.field = 'pot-label';
+    potLabel.textContent = 'Pot';
+    potRow.append(potLabel);
+
+    if (viewModel.pot !== undefined) {
+      const potAmount = document.createElement('span');
+      potAmount.className = 'board-pot-amount';
+      potAmount.dataset.field = 'pot-amount';
+      potAmount.textContent = formatPlayChips(viewModel.pot);
+      potRow.append(potAmount);
+    }
   }
 
   header.append(potRow);

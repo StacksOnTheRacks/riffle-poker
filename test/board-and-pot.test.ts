@@ -275,4 +275,31 @@ describe('board and pot', () => {
       'Empty River',
     );
   });
+
+  it.each([
+    ['desktop', 1280, 832],
+    ['tablet', 834, 1194],
+    ['phone', 402, 874],
+  ])('shows Main and Side pot labels at %s', (_label, width, height) => {
+    const root = renderAtViewport(width, height, {
+      boardCards: FLOP,
+      pots: [
+        { label: 'Main', amount: 300 },
+        { label: 'Side', amount: 400 },
+      ],
+    });
+    expect(boardText(root)).toContain('Main');
+    expect(boardText(root)).toContain('Side');
+    expect(boardText(root)).toContain('$300');
+    expect(boardText(root)).toContain('$400');
+  });
+
+  it('keeps single Pot label when only one pot exists', () => {
+    const root = renderAtViewport(1280, 832, {
+      boardCards: FLOP,
+      pot: 500,
+    });
+    expect(root.querySelectorAll('[data-field="pot-label"]')).toHaveLength(1);
+    expect(root.querySelector('[data-field="pot-label"]')?.textContent).toBe('Pot');
+  });
 });

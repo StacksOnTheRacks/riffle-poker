@@ -1,4 +1,4 @@
-import { advanceStreet, applyAction } from '../rules/index.js';
+import { applyAction, finalizeTerminalHand } from '../rules/index.js';
 import type { Action, RulesErrorCode } from '../rules/types.js';
 import {
   applyHandStateToSeats,
@@ -96,6 +96,10 @@ export async function handleAct(ctx: ActContext): Promise<ActResult> {
     return { ok: false, code: 'not_seated' };
   }
 
+  if (table.phase === 'complete') {
+    return { ok: false, code: 'illegal_action' };
+  }
+
   if (table.phase === 'fold_to_one' || table.phase === 'showdown_ready') {
     return { ok: false, code: 'illegal_action' };
   }
@@ -110,23 +114,18 @@ export async function handleAct(ctx: ActContext): Promise<ActResult> {
     return { ok: false, code: 'hand_not_in_progress' };
   }
 
-  const applied = applyAction(handState, callerSeat.seatId, action);
+  const applied = applyAction(handState, callerSeat.seatId, action, { allowAllIn: true });
   if (!applied.ok) {
     return { ok: false, code: mapRulesError(applied.error.code) };
   }
 
-  let nextState = applied.value;
-
-  if (nextState.phase === 'street_complete' && nextState.street !== 'river') {
-    const advanced = advanceStreet(nextState);
-    if (!advanced.ok) {
-      return { ok: false, code: 'illegal_action' };
-    }
-    nextState = advanced.value;
+  const finalized = finalizeTerminalHand(applied.value);
+  if (!finalized.ok) {
+    return { ok: false, code: 'illegal_action' };
   }
 
-  const updatedTable = applyHandStateToTable(table, nextState, table.version + 1);
-  const updatedSeats = applyHandStateToSeats(nextState, seats);
+  const updatedTable = applyHandStateToTable(table, finalized.value, table.version + 1);
+  const updatedSeats = applyHandStateToSeats(finalized.value, seats);
 
   const persisted = await ctx.store.updateTableWithVersion(
     table.tableId,

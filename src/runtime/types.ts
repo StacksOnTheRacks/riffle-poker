@@ -1,4 +1,4 @@
-import type { Card, Phase, Street } from '../rules/types.js';
+import type { Card, Phase, Pot, Street, Winner } from '../rules/types.js';
 
 export type TableStatus = 'open' | 'hand_in_progress';
 
@@ -28,6 +28,10 @@ export interface TableRecord {
   burns?: Card[];
   actedThisStreet?: string[];
   lastAggressorSeatId?: string | null;
+  shortAllInMatchedFromBet?: number | null;
+  pots?: Pot[];
+  winners?: Winner[];
+  completeReason?: 'fold_to_one' | 'showdown' | null;
 }
 
 export interface SeatRecord {
@@ -40,6 +44,7 @@ export interface SeatRecord {
   folded?: boolean;
   streetCommitted?: number;
   handCommitted?: number;
+  allIn?: boolean;
 }
 
 export interface ConnectionRecord {
@@ -88,6 +93,14 @@ export interface PlayerSnapshotSeat {
   position: 'D' | 'SB' | 'BB' | null;
   acting: boolean;
   folded: boolean;
+  allIn?: boolean;
+  holeCards?: [Card, Card];
+  wonAmount?: number;
+}
+
+export interface SnapshotPot {
+  label: string;
+  amount: number;
 }
 
 export interface TableSnapshotMessage {
@@ -101,9 +114,11 @@ export interface TableSnapshotMessage {
   blindsLabel: string;
   seatedPlayersLabel: string;
   pot: number;
+  pots?: SnapshotPot[];
   buttonSeatId: string | null;
   currentSeatId: string | null;
   phase?: Phase | null;
+  completeReason?: 'fold_to_one' | 'showdown' | null;
   board?: Card[];
   toCall?: number;
   seats: PlayerSnapshotSeat[];

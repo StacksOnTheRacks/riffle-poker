@@ -4,6 +4,8 @@ import type { HandState, SeatState } from './types.js';
 export type HandMeta = {
   actedThisStreet: Set<string>;
   lastAggressorSeatId: string | null;
+  /** Seats matched the bet before the most recent short all-in on this street. */
+  shortAllInMatchedFromBet: number | null;
 };
 
 const handMeta = new WeakMap<HandState, HandMeta>();
@@ -11,7 +13,11 @@ const handMeta = new WeakMap<HandState, HandMeta>();
 export function getHandMeta(state: HandState): HandMeta {
   let meta = handMeta.get(state);
   if (!meta) {
-    meta = { actedThisStreet: new Set(), lastAggressorSeatId: null };
+    meta = {
+      actedThisStreet: new Set(),
+      lastAggressorSeatId: null,
+      shortAllInMatchedFromBet: null,
+    };
     handMeta.set(state, meta);
   }
   return meta;
@@ -23,6 +29,7 @@ export function cloneHandMeta(from: HandState, to: HandState): void {
     handMeta.set(to, {
       actedThisStreet: new Set(source.actedThisStreet),
       lastAggressorSeatId: source.lastAggressorSeatId,
+      shortAllInMatchedFromBet: source.shortAllInMatchedFromBet,
     });
   }
 }
@@ -107,7 +114,13 @@ export function toCall(seat: SeatState, currentBet: number): number {
 }
 
 export function seatNeedsAction(state: HandState, seat: SeatState, meta: HandMeta): boolean {
-  if (seat.folded) {
+  if (seat.folded || seat.allIn || seat.stack === 0) {
+    return false;
+  }
+  if (
+    meta.shortAllInMatchedFromBet !== null &&
+    seat.streetCommitted >= meta.shortAllInMatchedFromBet
+  ) {
     return false;
   }
   if (toCall(seat, state.currentBet) > 0) {
