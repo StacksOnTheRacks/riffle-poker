@@ -121,6 +121,8 @@ export interface TableSnapshotMessage {
   completeReason?: 'fold_to_one' | 'showdown' | null;
   board?: Card[];
   toCall?: number;
+  currentBet?: number;
+  minRaiseTo?: number;
   seats: PlayerSnapshotSeat[];
   pocketCards?: [Card, Card];
 }

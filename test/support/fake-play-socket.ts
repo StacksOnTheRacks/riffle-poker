@@ -9,9 +9,11 @@ export class FakePlaySocket implements PlaySocket {
 
   constructor(readonly url: string) {}
 
-  addEventListener(type: string, listener: Listener): void {
+  addEventListener(type: 'open' | 'close' | 'error', listener: () => void): void;
+  addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void;
+  addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
     const rows = this.listeners.get(type) ?? [];
-    rows.push(listener);
+    rows.push(listener as Listener);
     this.listeners.set(type, rows);
   }
 

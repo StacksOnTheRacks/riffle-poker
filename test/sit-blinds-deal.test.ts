@@ -267,7 +267,7 @@ describe('sit, leave, and start_hand', () => {
         wsEvent(
           '$default',
           connId,
-          JSON.stringify({ action: 'sit', seatId: String(seatId), displayName: `P${seatId}` }),
+          JSON.stringify({ action: 'sit', seatId: String(seatId), displayName: `Player ${seatId}` }),
         ),
         {},
       );
@@ -285,6 +285,37 @@ describe('sit, leave, and start_hand', () => {
     );
     expect(sent.get('conn-full')?.at(-1)).toEqual({ type: 'error', code: 'table_full' });
     expect((await store.getTable('table-1'))?.version).toBe(versionBeforeFull);
+  });
+
+  it('rejects display names outside 3–24 characters after trim and accepts the bounds', async () => {
+    const { handler, store, sent } = createHarness();
+    await setupTable(handler, store);
+    const versionBefore = (await store.getTable('table-1'))?.version;
+
+    for (const displayName of ['Al', '  Al  ', 'x'.repeat(25), `  ${'y'.repeat(25)}  `]) {
+      await handler(
+        wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName })),
+        {},
+      );
+      expect(sent.get('conn-a')?.at(-1)).toEqual({ type: 'error', code: 'invalid_display_name' });
+    }
+    expect(await store.getSeat('table-1', '1')).toBeNull();
+    expect((await store.getTable('table-1'))?.version).toBe(versionBefore);
+
+    await handler(
+      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: '  Ann  ' })),
+      {},
+    );
+    await handler(
+      wsEvent(
+        '$default',
+        'conn-b',
+        JSON.stringify({ action: 'sit', seatId: '2', displayName: 'z'.repeat(24) }),
+      ),
+      {},
+    );
+    expect((await store.getSeat('table-1', '1'))?.displayName).toBe('Ann');
+    expect((await store.getSeat('table-1', '2'))?.displayName).toBe('z'.repeat(24));
   });
 
   it('leave between hands frees the seat and rejects leave mid-hand', async () => {

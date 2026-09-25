@@ -1,3 +1,4 @@
+import { validateDisplayName } from '../shared/display-name.js';
 import { hashSeatToken, mintSeatToken, verifySeatToken } from './seat-token.js';
 import type { MatchStore } from './store.js';
 import type { ClientMessage, ConnectionRecord, SeatRecord, TableRecord } from './types.js';
@@ -11,6 +12,7 @@ export type SitErrorCode =
   | 'already_seated'
   | 'table_full'
   | 'empty_display_name'
+  | 'invalid_display_name'
   | 'invalid_seat'
   | 'client_supplied_state'
   | 'invalid_seat_token'
@@ -40,10 +42,6 @@ export interface SitFailure {
 
 export type SitResult = SitSuccess | SitFailure;
 
-function normalizeDisplayName(value: string | undefined): string {
-  return (value ?? '').trim();
-}
-
 function isValidSeatId(seatId: string | undefined): seatId is string {
   return typeof seatId === 'string' && VALID_SEAT_IDS.has(seatId);
 }
@@ -63,10 +61,14 @@ export async function handleSit(ctx: SitContext): Promise<SitResult> {
     return { ok: false, code: 'invalid_seat' };
   }
 
-  const displayName = normalizeDisplayName(message.displayName);
-  if (!displayName) {
+  if (!(message.displayName ?? '').trim()) {
     return { ok: false, code: 'empty_display_name' };
   }
+  const validatedName = validateDisplayName(message.displayName);
+  if (!validatedName.ok) {
+    return { ok: false, code: 'invalid_display_name' };
+  }
+  const displayName = validatedName.value;
 
   if (connection.seatId) {
     return { ok: false, code: 'already_seated' };

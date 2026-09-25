@@ -1,4 +1,10 @@
-import { bigBlindSeatId, smallBlindSeatId, toCall } from '../rules/state.js';
+import {
+  bigBlindSeatId,
+  minOpeningWager,
+  minRaiseTo,
+  smallBlindSeatId,
+  toCall,
+} from '../rules/state.js';
 import { rehydrateHandState } from './hand-state.js';
 import type {
   ConnectionRecord,
@@ -143,6 +149,9 @@ export function buildSeatScopedSnapshot(
       const handSeat = handState.seats.find((seat) => seat.seatId === viewerSeatId);
       if (handSeat && handState.phase === 'betting') {
         snapshot.toCall = toCall(handSeat, handState.currentBet);
+        snapshot.currentBet = handState.currentBet;
+        snapshot.minRaiseTo =
+          handState.currentBet === 0 ? minOpeningWager(handState) : minRaiseTo(handState);
       }
     }
   }
