@@ -1,0 +1,95 @@
+:root {
+  color-scheme: dark;
+  --text-primary: #f5f5f7;
+  --text-muted: #b8bcc6;
+  --danger: #ff6b6b;
+  --accent: #d4af37;
+  --surface-bg: #101014;
+  --focus-ring: #7cc4ff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+}
+
+#app {
+  min-height: 100vh;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+#app[data-surface='loading'],
+#app[data-surface='table-not-found'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.surface {
+  width: min(960px, 100%);
+  min-height: min(640px, calc(100vh - 2rem));
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #15151b 0%, #0d0d11 100%);
+  padding: 2rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1rem;
+}
+
+.surface-title {
+  margin: 0;
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  font-weight: 600;
+}
+
+.surface-message {
+  margin: 0;
+  max-width: 36ch;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.surface-loading .loading-spinner {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--accent);
+  animation: dashboard-play-spin 0.9s linear infinite;
+}
+
+@keyframes dashboard-play-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.surface-table-not-found .surface-title {
+  color: var(--danger);
+}
+
+#app button:focus-visible,
+#app input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 833px) {
+  #app {
+    padding: 0.5rem;
+  }
+
+  .surface {
+    padding: 1.25rem;
+  }
+}
