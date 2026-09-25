@@ -1,0 +1,147 @@
+.dashboard-table-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 1rem;
+  box-sizing: border-box;
+}
+
+.dashboard-table-shell *,
+.dashboard-table-shell *::before,
+.dashboard-table-shell *::after {
+  box-sizing: border-box;
+}
+
+.dashboard-top-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dashboard-top-bar-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dashboard-table-name {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.dashboard-top-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard-top-bar-controls button,
+.dashboard-control-settings,
+.dashboard-control-leave,
+.dashboard-control-more {
+  font: inherit;
+}
+
+.dashboard-top-bar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.dashboard-meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.dashboard-meta-label {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.dashboard-meta-value {
+  font-size: 0.875rem;
+}
+
+.dashboard-hand-summary {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.dashboard-region {
+  min-height: 2rem;
+}
+
+[data-surface='dashboard'] .dashboard-region-player-row,
+[data-surface='dashboard'] .dashboard-region-my-hand,
+[data-surface='dashboard'] .dashboard-region-board,
+[data-surface='dashboard'] .dashboard-region-actions {
+  border: 1px dashed transparent;
+}
+
+@media (min-width: 1280px) {
+  [data-surface='dashboard'][data-breakpoint='desktop'] .dashboard-table-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'top-bar top-bar'
+      'player-row player-row'
+      'my-hand board'
+      'actions actions';
+    align-items: start;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='desktop'] .dashboard-top-bar {
+    grid-area: top-bar;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='desktop'] .dashboard-region-player-row {
+    grid-area: player-row;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='desktop'] .dashboard-region-my-hand {
+    grid-area: my-hand;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='desktop'] .dashboard-region-board {
+    grid-area: board;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='desktop'] .dashboard-region-actions {
+    grid-area: actions;
+  }
+}
+
+@media (min-width: 834px) and (max-width: 1279px) {
+  [data-surface='dashboard'][data-breakpoint='tablet'] .dashboard-region-board {
+    order: 3;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='tablet'] .dashboard-region-my-hand {
+    order: 4;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='tablet'] .dashboard-region-actions {
+    order: 5;
+  }
+}
+
+@media (min-width: 834px) and (max-width: 1279px) {
+  [data-surface='dashboard'][data-breakpoint='tablet'] .dashboard-table-shell {
+    display: flex;
+    flex-direction: column;
+  }
+
+  [data-surface='dashboard'][data-breakpoint='tablet'] .dashboard-top-bar-meta {
+    width: 100%;
+  }
+}
+
+@media (max-width: 833px) {
+  [data-surface='dashboard'][data-breakpoint='phone'] .dashboard-table-shell {
+    display: flex;
+    flex-direction: column;
+  }
+}
