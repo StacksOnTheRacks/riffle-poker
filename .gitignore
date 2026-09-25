@@ -4,5 +4,8 @@ public/play.js
 public/play.css
 public/lab.js
 public/lab.css
+public/identity.js
+public/identity.css
 .env
 *.log
+infra/cdk/cdk.out/
