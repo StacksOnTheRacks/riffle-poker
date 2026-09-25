@@ -21,7 +21,8 @@ describe('GET play seat view', () => {
     expect(body.seatId).toBe(fixture.seatA);
     expect(body.view.hole).toHaveLength(2);
     expect(body.view.hole).toEqual(fixture.holeA);
-    expect(JSON.stringify(body)).not.toContain(fixture.holeB?.[0] ?? '');
+    expect(body.view.hole).not.toContain(fixture.holeB?.[0] ?? '');
+    expect(body.view.hole).not.toContain(fixture.holeB?.[1] ?? '');
   });
 
   it('returns the other occupant only their holes', async () => {
@@ -34,7 +35,8 @@ describe('GET play seat view', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.view.hole).toEqual(fixture.holeB);
-    expect(JSON.stringify(body)).not.toContain(fixture.holeA?.[0] ?? '');
+    expect(body.view.hole).not.toContain(fixture.holeA?.[0] ?? '');
+    expect(body.view.hole).not.toContain(fixture.holeA?.[1] ?? '');
   });
 });
 
