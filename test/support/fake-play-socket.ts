@@ -42,6 +42,22 @@ export class FakePlaySocket implements PlaySocket {
   }
 }
 
+export function memoryStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & {
+  items: Map<string, string>;
+} {
+  const items = new Map<string, string>();
+  return {
+    items,
+    getItem: (key) => items.get(key) ?? null,
+    setItem: (key, value) => {
+      items.set(key, value);
+    },
+    removeItem: (key) => {
+      items.delete(key);
+    },
+  };
+}
+
 export function configFetch(
   body: unknown = { webSocketUrl: 'wss://example.execute-api.us-east-1.amazonaws.com/prod' },
   init: { ok?: boolean; reject?: boolean } = {},

@@ -1,4 +1,5 @@
 import { validateDisplayName } from '../shared/display-name.js';
+import { isBetweenHands, isSeatAway } from './hand-state.js';
 import { hashSeatToken, mintSeatToken, verifySeatToken } from './seat-token.js';
 import type { MatchStore } from './store.js';
 import type { ClientMessage, ConnectionRecord, SeatRecord, TableRecord } from './types.js';
@@ -53,7 +54,7 @@ export async function handleSit(ctx: SitContext): Promise<SitResult> {
     return { ok: false, code: 'not_table_member' };
   }
 
-  if (table.status === 'hand_in_progress') {
+  if (!isBetweenHands(table)) {
     return { ok: false, code: 'hand_in_progress' };
   }
 
@@ -74,14 +75,16 @@ export async function handleSit(ctx: SitContext): Promise<SitResult> {
     return { ok: false, code: 'already_seated' };
   }
 
-  if (seats.length >= table.maxSeats) {
+  // Between hands, an away seat can be taken over; its reclaim token stops working.
+  const existingSeat = seats.find((seat) => seat.seatId === message.seatId);
+  const replacesAwaySeat = existingSeat !== undefined && isSeatAway(existingSeat);
+  if (seats.length >= table.maxSeats && !replacesAwaySeat) {
     return { ok: false, code: 'table_full' };
   }
-
-  const existingSeat = seats.find((seat) => seat.seatId === message.seatId);
-  if (existingSeat) {
+  if (existingSeat && !replacesAwaySeat) {
     return { ok: false, code: 'seat_occupied' };
   }
+  const otherSeats = seats.filter((seat) => seat.seatId !== message.seatId);
 
   const seatToken = mintSeatToken();
   const seatTokenHash = hashSeatToken(seatToken);
@@ -106,14 +109,56 @@ export async function handleSit(ctx: SitContext): Promise<SitResult> {
     seatToken,
     seatId: message.seatId,
     table: updatedTable,
-    seats: [...seats, newSeat],
+    seats: [...otherSeats, newSeat].sort((a, b) => Number(a.seatId) - Number(b.seatId)),
+  };
+}
+
+export async function handleResumeSeat(ctx: SitContext): Promise<SitResult> {
+  const { connection, table, seats, message } = ctx;
+
+  if (!connection.tableId || connection.tableId !== table.tableId) {
+    return { ok: false, code: 'not_table_member' };
+  }
+
+  if (!message.seatToken) {
+    return { ok: false, code: 'invalid_seat_token' };
+  }
+
+  const seat = findSeatByToken(seats, message.seatToken);
+  if (!seat) {
+    return { ok: false, code: 'invalid_seat_token' };
+  }
+
+  if (connection.seatId && connection.seatId !== seat.seatId) {
+    return { ok: false, code: 'already_seated' };
+  }
+
+  const resumedSeat: SeatRecord = { ...seat, connectionId: connection.connectionId };
+  await ctx.store.bindConnectionToSeat(connection.connectionId, seat.seatId);
+
+  const updatedTable = await ctx.store.updateTableWithVersion(
+    table.tableId,
+    table.version,
+    { ...table, version: table.version + 1 },
+    [resumedSeat],
+  );
+  if (!updatedTable) {
+    return { ok: false, code: 'version_conflict' };
+  }
+
+  return {
+    ok: true,
+    seatToken: message.seatToken,
+    seatId: seat.seatId,
+    table: updatedTable,
+    seats: seats.map((row) => (row.seatId === seat.seatId ? resumedSeat : row)),
   };
 }
 
 export async function handleLeave(ctx: SitContext): Promise<SitResult> {
   const { connection, table, seats, message } = ctx;
 
-  if (table.status === 'hand_in_progress') {
+  if (!isBetweenHands(table)) {
     return { ok: false, code: 'hand_in_progress' };
   }
 

@@ -3,6 +3,7 @@ import type { Action, RulesErrorCode } from '../rules/types.js';
 import {
   applyHandStateToSeats,
   applyHandStateToTable,
+  isSeatAway,
   rehydrateHandState,
 } from './hand-state.js';
 import { findSeatByToken } from './sit.js';
@@ -80,6 +81,44 @@ function mapRulesError(code: RulesErrorCode): ActErrorCode {
   }
 }
 
+/**
+ * Folds every away (disconnected) seat whose turn it is, so a dropped player
+ * cannot stall the hand. Keeps the table version as given.
+ */
+export function foldAwayActors(
+  table: TableRecord,
+  seats: SeatRecord[],
+): { table: TableRecord; seats: SeatRecord[] } {
+  let currentTable = table;
+  let currentSeats = seats;
+
+  for (let guard = 0; guard < currentSeats.length; guard += 1) {
+    if (currentTable.status !== 'hand_in_progress' || currentTable.phase !== 'betting') {
+      break;
+    }
+    const actor = currentSeats.find((seat) => seat.seatId === currentTable.currentSeatId);
+    if (!actor || !isSeatAway(actor)) {
+      break;
+    }
+    const handState = rehydrateHandState(currentTable, currentSeats);
+    if (!handState) {
+      break;
+    }
+    const applied = applyAction(handState, actor.seatId, { type: 'fold' }, { allowAllIn: true });
+    if (!applied.ok) {
+      break;
+    }
+    const finalized = finalizeTerminalHand(applied.value);
+    if (!finalized.ok) {
+      break;
+    }
+    currentTable = applyHandStateToTable(currentTable, finalized.value, currentTable.version);
+    currentSeats = applyHandStateToSeats(finalized.value, currentSeats);
+  }
+
+  return { table: currentTable, seats: currentSeats };
+}
+
 export async function handleAct(ctx: ActContext): Promise<ActResult> {
   const { connection, table, seats, message } = ctx;
 
@@ -124,8 +163,12 @@ export async function handleAct(ctx: ActContext): Promise<ActResult> {
     return { ok: false, code: 'illegal_action' };
   }
 
-  const updatedTable = applyHandStateToTable(table, finalized.value, table.version + 1);
-  const updatedSeats = applyHandStateToSeats(finalized.value, seats);
+  const folded = foldAwayActors(
+    applyHandStateToTable(table, finalized.value, table.version + 1),
+    applyHandStateToSeats(finalized.value, seats),
+  );
+  const updatedTable = folded.table;
+  const updatedSeats = folded.seats;
 
   const persisted = await ctx.store.updateTableWithVersion(
     table.tableId,

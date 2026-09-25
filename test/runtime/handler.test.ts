@@ -187,6 +187,27 @@ describe('match runtime handler', () => {
     expect(store.hasConnection('conn-a')).toBe(true);
   });
 
+  it('treats ping as a silent keepalive', async () => {
+    const { handler, sent } = createHarness();
+    await handler(wsEvent('$connect', 'conn-a'), {});
+    const result = await handler(wsEvent('$default', 'conn-a', JSON.stringify({ action: 'ping' })), {});
+    expect(result).toEqual({ statusCode: 200 });
+    expect(sent.get('conn-a')).toBeUndefined();
+  });
+
+  it('rejects resume_seat with an unknown token', async () => {
+    const { handler, store, sent } = createHarness();
+    const table = await seedTable(store);
+    await handler(wsEvent('$connect', 'conn-a'), {});
+    await handler(wsEvent('$default', 'conn-a', JSON.stringify({ action: 'join_table', tableId: table.tableId })), {});
+    await handler(
+      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'resume_seat', seatToken: 'forged' })),
+      {},
+    );
+    expect(sent.get('conn-a')?.at(-1)).toEqual({ type: 'error', code: 'invalid_seat_token' });
+    expect((await store.getConnection('conn-a'))?.seatId).toBeUndefined();
+  });
+
   it('rejects public create_table without minting or binding a table', async () => {
     const { handler, store, sent } = createHarness();
     const createTable = vi.spyOn(store, 'createTable');

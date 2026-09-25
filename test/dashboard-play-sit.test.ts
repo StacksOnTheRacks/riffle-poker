@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { startDashboardPlay, type DashboardPlaySession } from '../src/client/dashboard-play/session.js';
 import type { TableSnapshotMessage } from '../src/runtime/types.js';
-import { configFetch, FakePlaySocket, flush, setViewport } from './support/fake-play-socket.js';
+import { configFetch, FakePlaySocket, flush, memoryStorage, setViewport } from './support/fake-play-socket.js';
 import { RuntimeBridge } from './support/runtime-bridge.js';
 
 const TABLE_ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
@@ -40,6 +40,7 @@ async function joinWithFakeSocket() {
     root,
     pathname: `/${TABLE_ID}`,
     fetch: configFetch().fetchImpl,
+    storage: memoryStorage(),
     createSocket: (url) => {
       socket = new FakePlaySocket(url);
       return socket;
@@ -218,6 +219,7 @@ describe('two anonymous players complete a hand through the runtime', () => {
       root,
       pathname: `/${TABLE_ID}`,
       fetch: configFetch().fetchImpl,
+      storage: memoryStorage(),
       createSocket: bridge.createSocket,
     });
     await bridge.settle();

@@ -7,7 +7,8 @@ import {
   parseClientMessage,
 } from './messages.js';
 import { handleAct, isBettingAction } from './act.js';
-import { handleLeave, handleSit } from './sit.js';
+import { handleSeatDisconnect } from './disconnect.js';
+import { handleLeave, handleResumeSeat, handleSit } from './sit.js';
 import { handleStartHand } from './start-hand.js';
 import { createMatchStore, type MatchStore } from './store.js';
 import type {
@@ -45,7 +46,23 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
     }
 
     if (routeKey === '$disconnect') {
+      const closing = await deps.store.getConnection(connectionId);
       await deps.store.deleteConnection(connectionId);
+      if (closing?.tableId && closing.seatId) {
+        const result = await handleSeatDisconnect(
+          deps.store,
+          closing.tableId,
+          closing.seatId,
+          connectionId,
+        );
+        if (result) {
+          await fanOutSeatScopedSnapshots(
+            { store: deps.store, postToConnection: deps.postToConnection },
+            result.table,
+            result.seats,
+          );
+        }
+      }
       return { statusCode: 200 };
     }
 
@@ -55,6 +72,10 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
         connectionId,
         errorMessage('unsupported_action'),
       );
+      return { statusCode: 200 };
+    }
+
+    if (message.action === 'ping') {
       return { statusCode: 200 };
     }
 
@@ -122,6 +143,33 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
       }
 
       const result = await handleSit({
+        store: deps.store,
+        connection,
+        table,
+        seats,
+        message,
+      });
+
+      if (!result.ok) {
+        await deps.postToConnection(connectionId, errorMessage(result.code));
+        return { statusCode: 200 };
+      }
+
+      await deps.postToConnection(connectionId, {
+        type: 'sat',
+        seatId: result.seatId,
+        seatToken: result.seatToken,
+      });
+      await fanOutSeatScopedSnapshots(
+        { store: deps.store, postToConnection: deps.postToConnection },
+        result.table,
+        result.seats,
+      );
+      return { statusCode: 200 };
+    }
+
+    if (message.action === 'resume_seat') {
+      const result = await handleResumeSeat({
         store: deps.store,
         connection,
         table,
@@ -258,7 +306,9 @@ export async function handler(
 ): Promise<{ statusCode: number; body?: string }> {
   if (!cachedStore || !cachedEnv) {
     cachedEnv = readEnv();
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
+      marshallOptions: { removeUndefinedValues: true },
+    });
     cachedStore = createMatchStore(client, cachedEnv);
   }
 

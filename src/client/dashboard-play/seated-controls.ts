@@ -6,7 +6,7 @@ import {
 } from '../surfaces/action-controls.js';
 
 export type SeatAction =
-  | { action: 'start_hand' }
+  | { action: 'start_hand' | 'leave' }
   | { action: 'fold' | 'check' | 'call' }
   | { action: 'bet' | 'raise'; amount: number };
 
@@ -55,6 +55,26 @@ function statusLine(text: string): HTMLElement {
   return line;
 }
 
+function button(className: string, field: string, label: string): HTMLButtonElement {
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = className;
+  element.dataset.field = field;
+  element.textContent = label;
+  return element;
+}
+
+function completeSummary(snapshot: TableSnapshotMessage): HTMLElement {
+  const winners = snapshot.seats.filter((seat) => (seat.wonAmount ?? 0) > 0);
+  const line = document.createElement('p');
+  line.className = 'seated-summary';
+  line.dataset.field = 'hand-summary';
+  line.textContent = winners.length
+    ? `Hand complete · ${winners.map((seat) => `${seat.displayName} wins ${seat.wonAmount}`).join(' · ')}`
+    : 'Hand complete';
+  return line;
+}
+
 export interface SeatedControlsState {
   pending: boolean;
   notice: string | null;
@@ -89,32 +109,36 @@ export function renderSeatedControls(
     onSubmit: () => undefined,
   });
 
-  if (!handInProgress) {
-    const enough = snapshot.seats.length >= 2;
-    const deal = document.createElement('button');
-    deal.type = 'button';
-    deal.className = 'seated-deal-button';
-    deal.dataset.field = 'deal-hand';
-    deal.textContent = 'Deal hand';
+  if (!handInProgress || complete) {
+    if (complete) {
+      region.append(completeSummary(snapshot));
+    }
+    const ready = snapshot.seats.filter((seat) => !seat.away && seat.stack > 0).length;
+    const busted = local.stack <= 0;
+    const enough = ready >= 2 && !busted;
+
+    const deal = button('seated-deal-button', 'deal-hand', complete ? 'Deal next hand' : 'Deal hand');
     deal.disabled = !enough || state.pending;
     deal.addEventListener('click', () => {
       if (!deal.disabled) {
         send({ action: 'start_hand' });
       }
     });
-    region.append(
-      deal,
-      statusLine(state.notice ?? (enough ? 'Ready to deal.' : 'Waiting for another player to sit.')),
-    );
-    return;
-  }
 
-  if (complete) {
-    const winners = snapshot.seats.filter((seat) => (seat.wonAmount ?? 0) > 0);
-    const summary = winners.length
-      ? `Hand complete · ${winners.map((seat) => `${seat.displayName} wins ${seat.wonAmount}`).join(' · ')}`
-      : 'Hand complete';
-    region.append(statusLine(summary));
+    const leave = button('seated-leave-button', 'leave-seat', 'Leave seat');
+    leave.disabled = state.pending;
+    leave.addEventListener('click', () => {
+      if (!leave.disabled) {
+        send({ action: 'leave' });
+      }
+    });
+
+    const idle = busted
+      ? 'Out of chips. Leave your seat and sit again to rebuy.'
+      : enough
+        ? 'Ready to deal.'
+        : 'Waiting for another player to sit.';
+    region.append(deal, leave, statusLine(state.notice ?? idle));
     return;
   }
 

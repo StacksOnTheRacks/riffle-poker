@@ -5,7 +5,7 @@ import {
   smallBlindSeatId,
   toCall,
 } from '../rules/state.js';
-import { rehydrateHandState } from './hand-state.js';
+import { isSeatAway, rehydrateHandState } from './hand-state.js';
 import type {
   ConnectionRecord,
   PlayerSnapshotSeat,
@@ -26,6 +26,10 @@ function seatPosition(
 ): PlayerSnapshotSeat['position'] {
   if (seatId === buttonSeatId) {
     return 'D';
+  }
+  // After a completed hand the button player may have left; blinds are then unknowable.
+  if (!handState.seats.some((seat) => seat.seatId === buttonSeatId)) {
+    return null;
   }
   if (seatId === smallBlindSeatId(handState)) {
     return 'SB';
@@ -98,6 +102,10 @@ export function buildSeatScopedSnapshot(
       folded: seat.folded ?? false,
       allIn: seat.allIn ?? handSeat?.allIn ?? false,
     };
+
+    if (isSeatAway(seat)) {
+      snapshotSeat.away = true;
+    }
 
     if (handState && isComplete) {
       const wonAmount = winnerAmountForSeat(table, handState, seat.seatId);

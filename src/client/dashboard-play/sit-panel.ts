@@ -30,12 +30,17 @@ export function renderSitPanel(
   const hadNameFocus = document.activeElement?.id === 'sit-display-name';
   region.replaceChildren();
 
-  const occupied = new Map(seats.map((seat) => [seat.seatId, seat]));
+  // Away seats can be taken over between hands, so they count as open.
+  const occupied = new Map(seats.filter((seat) => !seat.away).map((seat) => [seat.seatId, seat]));
+  const empty = new Set(SEAT_IDS.filter((seatId) => !seats.some((seat) => seat.seatId === seatId)));
   if (draft.seatId && occupied.has(draft.seatId)) {
     draft.seatId = null;
   }
   if (!draft.seatId) {
-    draft.seatId = SEAT_IDS.find((seatId) => !occupied.has(seatId)) ?? null;
+    draft.seatId =
+      SEAT_IDS.find((seatId) => empty.has(seatId)) ??
+      SEAT_IDS.find((seatId) => !occupied.has(seatId)) ??
+      null;
   }
 
   const form = document.createElement('form');

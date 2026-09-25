@@ -14,7 +14,7 @@ import {
   tableGsiPk,
   tablePk,
 } from './keys.js';
-import type { RuntimeEnv, SeatRecord, TableRecord } from './types.js';
+import type { ConnectionRecord, RuntimeEnv, SeatRecord, TableRecord } from './types.js';
 
 export interface MatchStore {
   putConnection(connectionId: string): Promise<void>;
@@ -75,6 +75,16 @@ function parseTableItem(item: Record<string, unknown>): TableRecord {
       item.lastAggressorSeatId === undefined || item.lastAggressorSeatId === null
         ? null
         : String(item.lastAggressorSeatId),
+    shortAllInMatchedFromBet:
+      item.shortAllInMatchedFromBet === undefined || item.shortAllInMatchedFromBet === null
+        ? null
+        : Number(item.shortAllInMatchedFromBet),
+    pots: Array.isArray(item.pots) ? (item.pots as TableRecord['pots']) : undefined,
+    winners: Array.isArray(item.winners) ? (item.winners as TableRecord['winners']) : undefined,
+    completeReason:
+      item.completeReason === 'fold_to_one' || item.completeReason === 'showdown'
+        ? item.completeReason
+        : null,
   };
 }
 
@@ -88,11 +98,22 @@ function parseSeatItem(item: Record<string, unknown>): SeatRecord {
     folded: item.folded === true,
     streetCommitted: Number(item.streetCommitted ?? 0),
     handCommitted: Number(item.handCommitted ?? 0),
+    allIn: item.allIn === true,
   };
   if (Array.isArray(item.hole) && item.hole.length === 2) {
     seat.hole = [String(item.hole[0]), String(item.hole[1])] as SeatRecord['hole'];
   }
   return seat;
+}
+
+function seatItem(tableId: string, seat: SeatRecord): Record<string, unknown> {
+  const item: Record<string, unknown> = { PK: tablePk(tableId), SK: seatSk(seat.seatId) };
+  for (const [key, value] of Object.entries(seat)) {
+    if (value !== undefined) {
+      item[key] = value;
+    }
+  }
+  return item;
 }
 
 export function createMatchStore(
@@ -339,11 +360,7 @@ export function createMatchStore(
       await client.send(
         new PutCommand({
           TableName: tableName,
-          Item: {
-            PK: tablePk(tableId),
-            SK: seatSk(seat.seatId),
-            ...seat,
-          },
+          Item: seatItem(tableId, seat),
         }),
       );
     },
@@ -370,7 +387,7 @@ export function createMatchStore(
               SK: META_SK,
             },
             UpdateExpression:
-              'SET #version = :nextVersion, #status = :status, handNumber = :handNumber, buttonSeatId = :buttonSeatId, street = :street, currentSeatId = :currentSeatId, pot = :pot, #board = :board, #phase = :phase, currentBet = :currentBet, lastRaiseSize = :lastRaiseSize, deckRemaining = :deckRemaining, burns = :burns, actedThisStreet = :actedThisStreet, lastAggressorSeatId = :lastAggressorSeatId',
+              'SET #version = :nextVersion, #status = :status, handNumber = :handNumber, buttonSeatId = :buttonSeatId, street = :street, currentSeatId = :currentSeatId, pot = :pot, #board = :board, #phase = :phase, currentBet = :currentBet, lastRaiseSize = :lastRaiseSize, deckRemaining = :deckRemaining, burns = :burns, actedThisStreet = :actedThisStreet, lastAggressorSeatId = :lastAggressorSeatId, shortAllInMatchedFromBet = :shortAllInMatchedFromBet, pots = :pots, winners = :winners, completeReason = :completeReason',
             ConditionExpression: '#version = :expectedVersion',
             ExpressionAttributeNames: {
               '#version': 'version',
@@ -395,6 +412,10 @@ export function createMatchStore(
               ':burns': table.burns ?? [],
               ':actedThisStreet': table.actedThisStreet ?? [],
               ':lastAggressorSeatId': table.lastAggressorSeatId ?? null,
+              ':shortAllInMatchedFromBet': table.shortAllInMatchedFromBet ?? null,
+              ':pots': table.pots ?? null,
+              ':winners': table.winners ?? null,
+              ':completeReason': table.completeReason ?? null,
             },
           }),
         );
@@ -403,11 +424,7 @@ export function createMatchStore(
           await client.send(
             new PutCommand({
               TableName: tableName,
-              Item: {
-                PK: tablePk(tableId),
-                SK: seatSk(seat.seatId),
-                ...seat,
-              },
+              Item: seatItem(tableId, seat),
             }),
           );
         }

@@ -171,6 +171,28 @@ body {
   cursor: not-allowed;
 }
 
+.seated-leave-button {
+  align-self: flex-start;
+  margin-left: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border: 1px solid var(--text-muted);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.seated-leave-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.seated-summary {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
 .sit-panel-status,
 .seated-status {
   margin: 0;

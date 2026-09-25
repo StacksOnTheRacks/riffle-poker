@@ -17,7 +17,7 @@ function toPlayerRowSeat(seat: PlayerSnapshotSeat, snapshot: TableSnapshotMessag
     stack: seat.stack,
     inHand: seat.inHand,
     allIn: seat.allIn,
-    lastAction: seat.folded ? 'Fold' : null,
+    lastAction: seat.away ? 'Away' : seat.folded ? 'Fold' : null,
     committed: seat.committed,
     position: seat.position,
     acting: seat.acting,

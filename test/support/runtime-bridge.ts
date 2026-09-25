@@ -61,7 +61,28 @@ export class RuntimeBridge {
   };
 
   dispatch(connectionId: string, data: string): void {
+    if (!this.sockets.has(connectionId)) {
+      return;
+    }
     this.queue = this.queue.then(() => this.handler(wsEvent('$default', connectionId, data), {}));
+  }
+
+  /** Simulates the network dropping a socket: the runtime sees $disconnect, the client sees close. */
+  drop(socket: FakePlaySocket): void {
+    const entry = [...this.sockets.entries()].find(([, row]) => row === socket);
+    if (!entry) {
+      return;
+    }
+    const [connectionId, bridged] = entry;
+    this.sockets.delete(connectionId);
+    this.queue = this.queue.then(async () => {
+      await this.handler(wsEvent('$disconnect', connectionId), {});
+      bridged.emit('close');
+    });
+  }
+
+  latestSocket(): BridgedSocket | undefined {
+    return [...this.sockets.values()].at(-1);
   }
 
   async settle(): Promise<void> {
