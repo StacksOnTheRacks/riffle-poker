@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRuntimeHandler } from '../../src/runtime/handler.js';
-import { buildPublicSnapshot } from '../../src/runtime/snapshot.js';
 import type { MatchStore } from '../../src/runtime/store.js';
-import type { OutboundMessage, TableRecord, WebSocketEvent } from '../../src/runtime/types.js';
+import type {
+  ConnectionRecord,
+  OutboundMessage,
+  SeatRecord,
+  TableRecord,
+  WebSocketEvent,
+} from '../../src/runtime/types.js';
 
 function wsEvent(
   routeKey: string,
@@ -21,11 +26,16 @@ function wsEvent(
 }
 
 class MemoryStore implements MatchStore {
-  private connections = new Map<string, { tableId?: string }>();
+  private connections = new Map<string, ConnectionRecord>();
   private tables = new Map<string, TableRecord>();
+  private seats = new Map<string, SeatRecord>();
+
+  private seatKey(tableId: string, seatId: string): string {
+    return `${tableId}:${seatId}`;
+  }
 
   async putConnection(connectionId: string): Promise<void> {
-    this.connections.set(connectionId, {});
+    this.connections.set(connectionId, { connectionId });
   }
 
   async deleteConnection(connectionId: string): Promise<void> {
@@ -33,11 +43,7 @@ class MemoryStore implements MatchStore {
   }
 
   async getConnection(connectionId: string) {
-    const row = this.connections.get(connectionId);
-    if (!row) {
-      return null;
-    }
-    return { connectionId, tableId: row.tableId };
+    return this.connections.get(connectionId) ?? null;
   }
 
   async createTable(tableId: string, createdAt: string): Promise<TableRecord> {
@@ -46,6 +52,14 @@ class MemoryStore implements MatchStore {
       version: 1,
       status: 'open',
       createdAt,
+      defaultStack: 2000,
+      maxSeats: 8,
+      blinds: { smallBlind: 1, bigBlind: 2 },
+      handNumber: 0,
+      pot: 0,
+      board: [],
+      street: null,
+      currentSeatId: null,
     };
     this.tables.set(tableId, table);
     return table;
@@ -57,6 +71,21 @@ class MemoryStore implements MatchStore {
       throw new Error('missing connection');
     }
     row.tableId = tableId;
+  }
+
+  async bindConnectionToSeat(connectionId: string, seatId: string): Promise<void> {
+    const row = this.connections.get(connectionId);
+    if (!row) {
+      throw new Error('missing connection');
+    }
+    row.seatId = seatId;
+  }
+
+  async clearConnectionSeat(connectionId: string): Promise<void> {
+    const row = this.connections.get(connectionId);
+    if (row) {
+      delete row.seatId;
+    }
   }
 
   async getTable(tableId: string): Promise<TableRecord | null> {
@@ -77,9 +106,45 @@ class MemoryStore implements MatchStore {
   }
 
   async listConnectionsForTable(tableId: string): Promise<string[]> {
-    return [...this.connections.entries()]
-      .filter(([, row]) => row.tableId === tableId)
-      .map(([connectionId]) => connectionId);
+    return [...this.connections.values()]
+      .filter((row) => row.tableId === tableId)
+      .map((row) => row.connectionId);
+  }
+
+  async getSeat(tableId: string, seatId: string): Promise<SeatRecord | null> {
+    return this.seats.get(this.seatKey(tableId, seatId)) ?? null;
+  }
+
+  async listSeats(tableId: string): Promise<SeatRecord[]> {
+    return [...this.seats.entries()]
+      .filter(([key]) => key.startsWith(`${tableId}:`))
+      .map(([, seat]) => seat)
+      .sort((a, b) => Number(a.seatId) - Number(b.seatId));
+  }
+
+  async putSeat(tableId: string, seat: SeatRecord): Promise<void> {
+    this.seats.set(this.seatKey(tableId, seat.seatId), { ...seat });
+  }
+
+  async deleteSeat(tableId: string, seatId: string): Promise<void> {
+    this.seats.delete(this.seatKey(tableId, seatId));
+  }
+
+  async updateTableWithVersion(
+    tableId: string,
+    expectedVersion: number,
+    table: TableRecord,
+    seats: SeatRecord[],
+  ): Promise<TableRecord | null> {
+    const current = this.tables.get(tableId);
+    if (!current || current.version !== expectedVersion) {
+      return null;
+    }
+    this.tables.set(tableId, { ...table });
+    for (const seat of seats) {
+      await this.putSeat(tableId, seat);
+    }
+    return table;
   }
 
   hasConnection(connectionId: string): boolean {
@@ -188,13 +253,14 @@ describe('match runtime handler', () => {
     const table = await store.getTable('table-uuid-1234');
     expect(table?.version).toBe(2);
 
-    const snapshot = buildPublicSnapshot(table!);
-    expect(snapshot).toEqual({
+    const snapshot = sent.get('conn-b')?.[0];
+    expect(snapshot).toMatchObject({
       type: 'table_snapshot',
       tableId: 'table-uuid-1234',
       version: 2,
       status: 'open',
-      createdAt: '2026-09-25T12:00:00.000Z',
+      blindsLabel: '$1 / $2',
+      seatedPlayersLabel: '0 / 8',
     });
     expect(snapshot).not.toHaveProperty('hole');
     expect(snapshot).not.toHaveProperty('seatToken');
@@ -218,9 +284,16 @@ describe('match runtime handler', () => {
         getConnection: store.getConnection.bind(store),
         createTable: store.createTable.bind(store),
         bindConnectionToTable: store.bindConnectionToTable.bind(store),
+        bindConnectionToSeat: store.bindConnectionToSeat.bind(store),
+        clearConnectionSeat: store.clearConnectionSeat.bind(store),
         getTable: store.getTable.bind(store),
         incrementTableVersion: increment,
         listConnectionsForTable: store.listConnectionsForTable.bind(store),
+        getSeat: store.getSeat.bind(store),
+        listSeats: store.listSeats.bind(store),
+        putSeat: store.putSeat.bind(store),
+        deleteSeat: store.deleteSeat.bind(store),
+        updateTableWithVersion: store.updateTableWithVersion.bind(store),
       },
       postToConnection: async (connectionId, message) => {
         const rows = sent.get(connectionId) ?? [];
@@ -287,7 +360,7 @@ describe('match runtime handler', () => {
 
     const before = await store.getTable('table-uuid-1234');
 
-    for (const action of ['fold', 'check', 'call', 'bet', 'raise', 'deal', 'sit', 'unknown']) {
+    for (const action of ['fold', 'check', 'call', 'bet', 'raise', 'deal', 'unknown']) {
       await handler(
         wsEvent('$default', 'conn-a', JSON.stringify({ action })),
         {},
@@ -296,7 +369,7 @@ describe('match runtime handler', () => {
 
     expect(await store.getTable('table-uuid-1234')).toEqual(before);
     expect(sent.get('conn-a')?.slice(1)).toEqual(
-      Array(8).fill({ type: 'error', code: 'unsupported_action' }),
+      Array(7).fill({ type: 'error', code: 'unsupported_action' }),
     );
   });
 });

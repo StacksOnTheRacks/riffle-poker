@@ -7,8 +7,19 @@ const UNSUPPORTED_GAMEPLAY_ACTIONS = new Set([
   'bet',
   'raise',
   'deal',
-  'sit',
 ]);
+
+const CLIENT_SUPPLIED_STATE_KEYS = [
+  'stack',
+  'blinds',
+  'pot',
+  'deal',
+  'hole',
+  'holeCards',
+  'board',
+  'winners',
+  'street',
+] as const;
 
 export function parseClientMessage(body: string | null | undefined): ClientMessage | null {
   if (!body) {
@@ -32,4 +43,8 @@ export function parseClientMessage(body: string | null | undefined): ClientMessa
 
 export function isUnsupportedGameplayAction(action: string): boolean {
   return UNSUPPORTED_GAMEPLAY_ACTIONS.has(action);
+}
+
+export function hasClientSuppliedState(message: ClientMessage): boolean {
+  return CLIENT_SUPPLIED_STATE_KEYS.some((key) => message[key] !== undefined);
 }
