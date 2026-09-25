@@ -1,16 +1,10 @@
 import type { ClientMessage } from './types.js';
 
-const UNSUPPORTED_GAMEPLAY_ACTIONS = new Set([
-  'fold',
-  'check',
-  'call',
-  'bet',
-  'raise',
-  'deal',
-]);
+const UNSUPPORTED_GAMEPLAY_ACTIONS = new Set(['deal']);
 
 const CLIENT_SUPPLIED_STATE_KEYS = [
   'stack',
+  'stacks',
   'blinds',
   'pot',
   'deal',

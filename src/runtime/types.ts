@@ -1,4 +1,4 @@
-import type { Card, Street } from '../rules/types.js';
+import type { Card, Phase, Street } from '../rules/types.js';
 
 export type TableStatus = 'open' | 'hand_in_progress';
 
@@ -21,6 +21,13 @@ export interface TableRecord {
   currentSeatId?: string | null;
   pot?: number;
   board?: Card[];
+  phase?: Phase | null;
+  currentBet?: number;
+  lastRaiseSize?: number;
+  deckRemaining?: Card[];
+  burns?: Card[];
+  actedThisStreet?: string[];
+  lastAggressorSeatId?: string | null;
 }
 
 export interface SeatRecord {
@@ -47,7 +54,9 @@ export interface ClientMessage {
   seatId?: string;
   displayName?: string;
   seatToken?: string;
+  amount?: number;
   stack?: number;
+  stacks?: unknown;
   blinds?: BlindsConfig;
   pot?: number;
   deal?: unknown;
@@ -94,6 +103,9 @@ export interface TableSnapshotMessage {
   pot: number;
   buttonSeatId: string | null;
   currentSeatId: string | null;
+  phase?: Phase | null;
+  board?: Card[];
+  toCall?: number;
   seats: PlayerSnapshotSeat[];
   pocketCards?: [Card, Card];
 }
