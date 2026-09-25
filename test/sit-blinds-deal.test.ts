@@ -168,16 +168,19 @@ function createHarness(rngSeed = 42) {
       sent.set(connectionId, rows);
     },
     now: () => '2026-09-25T12:00:00.000Z',
-    randomTableId: () => 'table-1',
     rngSeed: () => rngSeed,
   });
 
   return { handler, store, sent };
 }
 
-async function setupTable(handler: ReturnType<typeof createHarness>['handler']) {
+async function setupTable(
+  handler: ReturnType<typeof createHarness>['handler'],
+  store: MatchStore,
+) {
+  await store.createTable('table-1', '2026-09-25T12:00:00.000Z');
   await handler(wsEvent('$connect', 'conn-a'), {});
-  await handler(wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })), {});
+  await store.bindConnectionToTable('conn-a', 'table-1');
   await handler(wsEvent('$connect', 'conn-b'), {});
   await handler(
     wsEvent('$default', 'conn-b', JSON.stringify({ action: 'join_table', tableId: 'table-1' })),
@@ -191,8 +194,8 @@ function lastSnapshot(messages: OutboundMessage[] | undefined) {
 
 describe('sit, leave, and start_hand', () => {
   it('sit assigns an open seat, returns a seat token, and sets starting stack', async () => {
-    const { handler, sent } = createHarness();
-    await setupTable(handler);
+    const { handler, store, sent } = createHarness();
+    await setupTable(handler, store);
 
     await handler(
       wsEvent(
@@ -226,7 +229,7 @@ describe('sit, leave, and start_hand', () => {
 
   it('rejects sit when seat occupied, caller seated, table full, or name empty', async () => {
     const { handler, store, sent } = createHarness();
-    await setupTable(handler);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: 'Alice' })),
@@ -264,7 +267,7 @@ describe('sit, leave, and start_hand', () => {
         wsEvent(
           '$default',
           connId,
-          JSON.stringify({ action: 'sit', seatId: String(seatId), displayName: `P${seatId}` }),
+          JSON.stringify({ action: 'sit', seatId: String(seatId), displayName: `Player ${seatId}` }),
         ),
         {},
       );
@@ -284,9 +287,40 @@ describe('sit, leave, and start_hand', () => {
     expect((await store.getTable('table-1'))?.version).toBe(versionBeforeFull);
   });
 
+  it('rejects display names outside 3–24 characters after trim and accepts the bounds', async () => {
+    const { handler, store, sent } = createHarness();
+    await setupTable(handler, store);
+    const versionBefore = (await store.getTable('table-1'))?.version;
+
+    for (const displayName of ['Al', '  Al  ', 'x'.repeat(25), `  ${'y'.repeat(25)}  `]) {
+      await handler(
+        wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName })),
+        {},
+      );
+      expect(sent.get('conn-a')?.at(-1)).toEqual({ type: 'error', code: 'invalid_display_name' });
+    }
+    expect(await store.getSeat('table-1', '1')).toBeNull();
+    expect((await store.getTable('table-1'))?.version).toBe(versionBefore);
+
+    await handler(
+      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: '  Ann  ' })),
+      {},
+    );
+    await handler(
+      wsEvent(
+        '$default',
+        'conn-b',
+        JSON.stringify({ action: 'sit', seatId: '2', displayName: 'z'.repeat(24) }),
+      ),
+      {},
+    );
+    expect((await store.getSeat('table-1', '1'))?.displayName).toBe('Ann');
+    expect((await store.getSeat('table-1', '2'))?.displayName).toBe('z'.repeat(24));
+  });
+
   it('leave between hands frees the seat and rejects leave mid-hand', async () => {
     const { handler, store, sent } = createHarness(99);
-    await setupTable(handler);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: 'Alice' })),
@@ -336,7 +370,7 @@ describe('sit, leave, and start_hand', () => {
 
   it('rejects start_hand with fewer than two players, while in progress, or from non-seated caller', async () => {
     const { handler, store, sent } = createHarness();
-    await setupTable(handler);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: 'Alice' })),
@@ -378,8 +412,8 @@ describe('sit, leave, and start_hand', () => {
   });
 
   it('heads-up assigns button as SB and first-to-act as button', async () => {
-    const { handler, sent } = createHarness(7);
-    await setupTable(handler);
+    const { handler, store, sent } = createHarness(7);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: 'Alice' })),
@@ -423,8 +457,8 @@ describe('sit, leave, and start_hand', () => {
   });
 
   it('three or more players assign SB left of button, BB left of SB, first-to-act left of BB', async () => {
-    const { handler, sent } = createHarness(11);
-    await setupTable(handler);
+    const { handler, store, sent } = createHarness(11);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '2', displayName: 'Alice' })),
@@ -465,8 +499,8 @@ describe('sit, leave, and start_hand', () => {
   });
 
   it('includes two hole faces only on the owning seat snapshot', async () => {
-    const { handler, sent } = createHarness(5);
-    await setupTable(handler);
+    const { handler, store, sent } = createHarness(5);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: 'Alice' })),
@@ -501,7 +535,7 @@ describe('sit, leave, and start_hand', () => {
 
   it('rejects client-supplied stack or deal fields on sit and start_hand', async () => {
     const { handler, store, sent } = createHarness();
-    await setupTable(handler);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent(
@@ -540,7 +574,7 @@ describe('sit, leave, and start_hand', () => {
 
   it('public snapshots never include seat tokens', async () => {
     const { handler, store, sent } = createHarness(3);
-    await setupTable(handler);
+    await setupTable(handler, store);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'sit', seatId: '1', displayName: 'Alice' })),

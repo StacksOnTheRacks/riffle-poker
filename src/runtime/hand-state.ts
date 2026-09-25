@@ -2,6 +2,20 @@ import { getHandMeta } from '../rules/state.js';
 import type { Card, HandState, Phase } from '../rules/types.js';
 import type { SeatRecord, TableRecord } from './types.js';
 
+export function isBetweenHands(table: TableRecord): boolean {
+  return table.status !== 'hand_in_progress' || table.phase === 'complete';
+}
+
+export function isSeatAway(seat: SeatRecord): boolean {
+  return !seat.connectionId;
+}
+
+export function clearSeatHand(seat: SeatRecord): SeatRecord {
+  const { hole: _hole, folded: _folded, streetCommitted: _street, handCommitted: _hand, allIn: _allIn, ...rest } =
+    seat;
+  return rest;
+}
+
 export function rehydrateHandState(
   table: TableRecord,
   seats: SeatRecord[],

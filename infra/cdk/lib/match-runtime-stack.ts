@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CfnOutput,
+  CustomResource,
   Duration,
   RemovalPolicy,
   Stack,
@@ -9,16 +10,24 @@ import {
 } from 'aws-cdk-lib';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3Deployment from 'aws-cdk-lib/aws-s3-deployment';
+import * as customResources from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '../../..');
+export const DASHBOARD_ARTIFACT_DIR = path.join(repoRoot, 'public/dashboard');
 
 export class MatchRuntimeStack extends Stack {
+  readonly webSocketUrl: string;
+
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
@@ -82,6 +91,7 @@ export class MatchRuntimeStack extends Stack {
       stageName: 'prod',
       autoDeploy: true,
     });
+    this.webSocketUrl = stage.url;
 
     handler.addToRolePolicy(
       new iam.PolicyStatement({
@@ -102,6 +112,81 @@ export class MatchRuntimeStack extends Stack {
 
     new CfnOutput(this, 'TableName', {
       value: table.tableName,
+    });
+
+    const siteBucket = new s3.Bucket(this, 'DashboardSiteBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+    });
+
+    const spaFallback = (httpStatus: number): cloudfront.ErrorResponse => ({
+      httpStatus,
+      responseHttpStatus: 200,
+      responsePagePath: '/index.html',
+      ttl: Duration.seconds(0),
+    });
+
+    const distribution = new cloudfront.Distribution(this, 'DashboardDistribution', {
+      defaultBehavior: {
+        origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(siteBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      },
+      defaultRootObject: 'index.html',
+      errorResponses: [spaFallback(403), spaFallback(404)],
+    });
+
+    new s3Deployment.BucketDeployment(this, 'DashboardSiteDeployment', {
+      destinationBucket: siteBucket,
+      sources: [
+        s3Deployment.Source.asset(DASHBOARD_ARTIFACT_DIR),
+        s3Deployment.Source.jsonData('config.json', { webSocketUrl: this.webSocketUrl }),
+      ],
+      distribution,
+      distributionPaths: ['/*'],
+    });
+
+    new CfnOutput(this, 'DashboardUrl', {
+      value: `https://${distribution.distributionDomainName}`,
+    });
+
+    const seedHandler = new lambdaNodejs.NodejsFunction(this, 'SeedTableHandler', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, 'seed-table-handler.ts'),
+      projectRoot: repoRoot,
+      handler: 'handler',
+      timeout: Duration.seconds(30),
+      bundling: {
+        target: 'node22',
+        format: lambdaNodejs.OutputFormat.ESM,
+        externalModules: ['@aws-sdk/*'],
+      },
+      depsLockFilePath: path.join(repoRoot, 'package-lock.json'),
+    });
+    seedHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:PutItem'],
+        resources: [table.tableArn],
+      }),
+    );
+
+    const seedProvider = new customResources.Provider(this, 'SeedTableProvider', {
+      onEventHandler: seedHandler,
+    });
+
+    const seededTable = new CustomResource(this, 'SeededTable', {
+      serviceToken: seedProvider.serviceToken,
+      resourceType: 'Custom::SeededPokerTable',
+      properties: { TableName: table.tableName },
+    });
+    const seededTableId = seededTable.getAttString('TableId');
+
+    new CfnOutput(this, 'SeededTableId', {
+      value: seededTableId,
+    });
+
+    new CfnOutput(this, 'PlayUrl', {
+      value: `https://${distribution.distributionDomainName}/${seededTableId}`,
     });
   }
 }

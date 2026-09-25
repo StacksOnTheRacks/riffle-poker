@@ -3,6 +3,9 @@ import { createSeededRng } from '../rules/rng.js';
 import {
   applyHandStateToSeats,
   applyHandStateToTable,
+  clearSeatHand,
+  isBetweenHands,
+  isSeatAway,
 } from './hand-state.js';
 import { findSeatByToken } from './sit.js';
 import type { MatchStore } from './store.js';
@@ -65,7 +68,7 @@ export function chooseButtonSeatId(seats: SeatRecord[], previousButton?: string)
 export async function handleStartHand(ctx: StartHandContext): Promise<StartHandResult> {
   const { connection, table, seats, message } = ctx;
 
-  if (table.status === 'hand_in_progress') {
+  if (!isBetweenHands(table)) {
     return { ok: false, code: 'hand_in_progress' };
   }
 
@@ -78,17 +81,19 @@ export async function handleStartHand(ctx: StartHandContext): Promise<StartHandR
     return { ok: false, code: 'not_seated' };
   }
 
-  if (seats.length < 2) {
+  // Away (disconnected) and busted seats sit out rather than stall the hand.
+  const dealtIn = seats.filter((seat) => !isSeatAway(seat) && seat.stack > 0);
+  if (dealtIn.length < 2) {
     return { ok: false, code: 'insufficient_players' };
   }
 
   const buttonSeatId = chooseButtonSeatId(
-    seats,
+    dealtIn,
     table.handNumber > 0 ? table.buttonSeatId : undefined,
   );
 
   const dealResult = dealHand({
-    seats: seats.map((seat) => ({ seatId: seat.seatId, stack: seat.stack })),
+    seats: dealtIn.map((seat) => ({ seatId: seat.seatId, stack: seat.stack })),
     buttonSeatId,
     blinds: table.blinds,
     rng: createSeededRng(ctx.rngSeed ?? Date.now()),
@@ -110,7 +115,7 @@ export async function handleStartHand(ctx: StartHandContext): Promise<StartHandR
     table.version + 1,
   );
 
-  const updatedSeats = applyHandStateToSeats(handState, seats);
+  const updatedSeats = applyHandStateToSeats(handState, seats.map(clearSeatHand));
   const persisted = await ctx.store.updateTableWithVersion(
     table.tableId,
     table.version,

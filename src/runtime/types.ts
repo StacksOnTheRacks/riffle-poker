@@ -30,7 +30,7 @@ export interface TableRecord {
   lastAggressorSeatId?: string | null;
   shortAllInMatchedFromBet?: number | null;
   pots?: Pot[];
-  winners?: Winner[];
+  winners?: Winner[] | null;
   completeReason?: 'fold_to_one' | 'showdown' | null;
 }
 
@@ -94,6 +94,7 @@ export interface PlayerSnapshotSeat {
   acting: boolean;
   folded: boolean;
   allIn?: boolean;
+  away?: boolean;
   holeCards?: [Card, Card];
   wonAmount?: number;
 }
@@ -121,6 +122,8 @@ export interface TableSnapshotMessage {
   completeReason?: 'fold_to_one' | 'showdown' | null;
   board?: Card[];
   toCall?: number;
+  currentBet?: number;
+  minRaiseTo?: number;
   seats: PlayerSnapshotSeat[];
   pocketCards?: [Card, Card];
 }

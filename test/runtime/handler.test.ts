@@ -153,7 +153,6 @@ class MemoryStore implements MatchStore {
 }
 
 function createHarness(options?: {
-  randomTableId?: () => string;
   incrementTableVersion?: MatchStore['incrementTableVersion'];
 }) {
   const store = new MemoryStore();
@@ -172,10 +171,13 @@ function createHarness(options?: {
       sent.set(connectionId, rows);
     },
     now: () => '2026-09-25T12:00:00.000Z',
-    randomTableId: options?.randomTableId ?? (() => 'table-uuid-1234'),
   });
 
   return { handler, store, sent };
+}
+
+async function seedTable(store: MatchStore, tableId = 'table-uuid-1234'): Promise<TableRecord> {
+  return store.createTable(tableId, '2026-09-25T12:00:00.000Z');
 }
 
 describe('match runtime handler', () => {
@@ -185,40 +187,50 @@ describe('match runtime handler', () => {
     expect(store.hasConnection('conn-a')).toBe(true);
   });
 
-  it('create_table persists a table, returns tableId, and binds the caller', async () => {
-    const { handler, store, sent } = createHarness();
+  it('treats ping as a silent keepalive', async () => {
+    const { handler, sent } = createHarness();
     await handler(wsEvent('$connect', 'conn-a'), {});
-    await handler(
-      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })),
-      {},
-    );
-
-    const connection = await store.getConnection('conn-a');
-    expect(connection?.tableId).toBe('table-uuid-1234');
-
-    const table = await store.getTable('table-uuid-1234');
-    expect(table).toMatchObject({
-      tableId: 'table-uuid-1234',
-      version: 1,
-      status: 'open',
-      createdAt: '2026-09-25T12:00:00.000Z',
-    });
-
-    expect(sent.get('conn-a')).toEqual([
-      { type: 'table_created', tableId: 'table-uuid-1234' },
-    ]);
+    const result = await handler(wsEvent('$default', 'conn-a', JSON.stringify({ action: 'ping' })), {});
+    expect(result).toEqual({ statusCode: 200 });
+    expect(sent.get('conn-a')).toBeUndefined();
   });
 
-  it('uses an unguessable table id', async () => {
-    const { handler } = createHarness({
-      randomTableId: () => 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
-    });
+  it('rejects resume_seat with an unknown token', async () => {
+    const { handler, store, sent } = createHarness();
+    const table = await seedTable(store);
+    await handler(wsEvent('$connect', 'conn-a'), {});
+    await handler(wsEvent('$default', 'conn-a', JSON.stringify({ action: 'join_table', tableId: table.tableId })), {});
+    await handler(
+      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'resume_seat', seatToken: 'forged' })),
+      {},
+    );
+    expect(sent.get('conn-a')?.at(-1)).toEqual({ type: 'error', code: 'invalid_seat_token' });
+    expect((await store.getConnection('conn-a'))?.seatId).toBeUndefined();
+  });
+
+  it('rejects public create_table without minting or binding a table', async () => {
+    const { handler, store, sent } = createHarness();
+    const createTable = vi.spyOn(store, 'createTable');
+    const bindConnectionToTable = vi.spyOn(store, 'bindConnectionToTable');
 
     await handler(wsEvent('$connect', 'conn-a'), {});
-    await handler(
+    const result = await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })),
       {},
     );
+
+    expect(result).toEqual({ statusCode: 200 });
+    expect(sent.get('conn-a')).toEqual([{ type: 'error', code: 'unsupported_action' }]);
+    expect(createTable).not.toHaveBeenCalled();
+    expect(bindConnectionToTable).not.toHaveBeenCalled();
+    expect((await store.getConnection('conn-a'))?.tableId).toBeUndefined();
+    expect(sent.get('conn-a')?.some((message) => message.type === 'table_created')).toBe(false);
+  });
+
+  it('joins a seeded table by its unguessable id', async () => {
+    const { handler, store } = createHarness();
+    await seedTable(store, 'f47ac10b-58cc-4372-a567-0e02b2c3d479');
+
     await handler(wsEvent('$connect', 'conn-b'), {});
 
     await expect(
@@ -230,16 +242,17 @@ describe('match runtime handler', () => {
         {},
       ),
     ).resolves.toEqual({ statusCode: 200 });
+    expect((await store.getConnection('conn-b'))?.tableId).toBe(
+      'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+    );
   });
 
   it('join_table binds, bumps version, and fans out a public snapshot', async () => {
     const { handler, store, sent } = createHarness();
+    await seedTable(store);
 
     await handler(wsEvent('$connect', 'conn-a'), {});
-    await handler(
-      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })),
-      {},
-    );
+    await store.bindConnectionToTable('conn-a', 'table-uuid-1234');
 
     await handler(wsEvent('$connect', 'conn-b'), {});
     await handler(
@@ -265,10 +278,7 @@ describe('match runtime handler', () => {
     expect(snapshot).not.toHaveProperty('hole');
     expect(snapshot).not.toHaveProperty('seatToken');
 
-    expect(sent.get('conn-a')).toEqual([
-      { type: 'table_created', tableId: 'table-uuid-1234' },
-      snapshot,
-    ]);
+    expect(sent.get('conn-a')).toEqual([snapshot]);
     expect(sent.get('conn-b')).toEqual([snapshot]);
   });
 
@@ -301,14 +311,11 @@ describe('match runtime handler', () => {
         sent.set(connectionId, rows);
       },
       now: () => '2026-09-25T12:00:00.000Z',
-      randomTableId: () => 'table-uuid-1234',
     });
 
+    await seedTable(store);
     await handler(wsEvent('$connect', 'conn-a'), {});
-    await handler(
-      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })),
-      {},
-    );
+    await store.bindConnectionToTable('conn-a', 'table-uuid-1234');
     await handler(wsEvent('$connect', 'conn-b'), {});
     await handler(
       wsEvent('$default', 'conn-b', JSON.stringify({
@@ -319,20 +326,16 @@ describe('match runtime handler', () => {
     );
 
     expect(increment).toHaveBeenCalledOnce();
-    expect(sent.get('conn-a')).toEqual([
-      { type: 'table_created', tableId: 'table-uuid-1234' },
-    ]);
+    expect(sent.get('conn-a')).toBeUndefined();
     expect(sent.get('conn-b')).toEqual([{ type: 'error', code: 'version_conflict' }]);
   });
 
   it('removes only the disconnected connection row', async () => {
     const { handler, store } = createHarness();
+    await seedTable(store);
 
     await handler(wsEvent('$connect', 'conn-a'), {});
-    await handler(
-      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })),
-      {},
-    );
+    await store.bindConnectionToTable('conn-a', 'table-uuid-1234');
     await handler(wsEvent('$connect', 'conn-b'), {});
     await handler(
       wsEvent('$default', 'conn-b', JSON.stringify({
@@ -351,12 +354,10 @@ describe('match runtime handler', () => {
 
   it('rejects unsupported gameplay actions without writing table state', async () => {
     const { handler, store, sent } = createHarness();
+    await seedTable(store);
 
     await handler(wsEvent('$connect', 'conn-a'), {});
-    await handler(
-      wsEvent('$default', 'conn-a', JSON.stringify({ action: 'create_table' })),
-      {},
-    );
+    await store.bindConnectionToTable('conn-a', 'table-uuid-1234');
 
     const before = await store.getTable('table-uuid-1234');
 
@@ -368,7 +369,7 @@ describe('match runtime handler', () => {
     }
 
     expect(await store.getTable('table-uuid-1234')).toEqual(before);
-    expect(sent.get('conn-a')?.slice(1)).toEqual([
+    expect(sent.get('conn-a')).toEqual([
       { type: 'error', code: 'hand_not_in_progress' },
       { type: 'error', code: 'hand_not_in_progress' },
       { type: 'error', code: 'hand_not_in_progress' },

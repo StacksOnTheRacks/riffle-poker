@@ -1,5 +1,11 @@
-import { bigBlindSeatId, smallBlindSeatId, toCall } from '../rules/state.js';
-import { rehydrateHandState } from './hand-state.js';
+import {
+  bigBlindSeatId,
+  minOpeningWager,
+  minRaiseTo,
+  smallBlindSeatId,
+  toCall,
+} from '../rules/state.js';
+import { isSeatAway, rehydrateHandState } from './hand-state.js';
 import type {
   ConnectionRecord,
   PlayerSnapshotSeat,
@@ -20,6 +26,10 @@ function seatPosition(
 ): PlayerSnapshotSeat['position'] {
   if (seatId === buttonSeatId) {
     return 'D';
+  }
+  // After a completed hand the button player may have left; blinds are then unknowable.
+  if (!handState.seats.some((seat) => seat.seatId === buttonSeatId)) {
+    return null;
   }
   if (seatId === smallBlindSeatId(handState)) {
     return 'SB';
@@ -93,6 +103,10 @@ export function buildSeatScopedSnapshot(
       allIn: seat.allIn ?? handSeat?.allIn ?? false,
     };
 
+    if (isSeatAway(seat)) {
+      snapshotSeat.away = true;
+    }
+
     if (handState && isComplete) {
       const wonAmount = winnerAmountForSeat(table, handState, seat.seatId);
       if (wonAmount !== undefined && wonAmount > 0) {
@@ -143,6 +157,9 @@ export function buildSeatScopedSnapshot(
       const handSeat = handState.seats.find((seat) => seat.seatId === viewerSeatId);
       if (handSeat && handState.phase === 'betting') {
         snapshot.toCall = toCall(handSeat, handState.currentBet);
+        snapshot.currentBet = handState.currentBet;
+        snapshot.minRaiseTo =
+          handState.currentBet === 0 ? minOpeningWager(handState) : minRaiseTo(handState);
       }
     }
   }

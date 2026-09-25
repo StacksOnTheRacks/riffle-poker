@@ -1,0 +1,211 @@
+:root {
+  color-scheme: dark;
+  --text-primary: #f5f5f7;
+  --text-muted: #b8bcc6;
+  --danger: #ff6b6b;
+  --accent: #d4af37;
+  --surface-bg: #101014;
+  --focus-ring: #7cc4ff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+}
+
+#app {
+  min-height: 100vh;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+#app[data-surface='loading'],
+#app[data-surface='table-not-found'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.surface {
+  width: min(960px, 100%);
+  min-height: min(640px, calc(100vh - 2rem));
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #15151b 0%, #0d0d11 100%);
+  padding: 2rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1rem;
+}
+
+.surface-title {
+  margin: 0;
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  font-weight: 600;
+}
+
+.surface-message {
+  margin: 0;
+  max-width: 36ch;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.surface-loading .loading-spinner {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--accent);
+  animation: dashboard-play-spin 0.9s linear infinite;
+}
+
+@keyframes dashboard-play-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.surface-table-not-found .surface-title {
+  color: var(--danger);
+}
+
+#app button:focus-visible,
+#app input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.sit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 32rem;
+}
+
+.sit-panel-title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.sit-panel-seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sit-panel-seats legend {
+  margin-bottom: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.sit-panel-seat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.sit-panel-seat:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sit-panel-seat:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.sit-panel-name-label {
+  font-weight: 600;
+}
+
+.sit-panel-name-input {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: #0b0b0f;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.sit-panel-name-input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.sit-panel-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.sit-panel-submit,
+.seated-deal-button {
+  align-self: flex-start;
+  padding: 0.625rem 1.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--accent);
+  color: #111;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sit-panel-submit:disabled,
+.seated-deal-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.seated-leave-button {
+  align-self: flex-start;
+  margin-left: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border: 1px solid var(--text-muted);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.seated-leave-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.seated-summary {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.sit-panel-status,
+.seated-status {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--text-muted);
+}
+
+@media (max-width: 833px) {
+  #app {
+    padding: 0.5rem;
+  }
+
+  .surface {
+    padding: 1.25rem;
+  }
+}

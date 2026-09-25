@@ -32,6 +32,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Build dashboard play SPA
+        run: npm run build:client
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
