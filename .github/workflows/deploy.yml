@@ -13,12 +13,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      vars.AWS_DEPLOY_ROLE_ARN != ''
+    # Environment-scoped vars are not visible to a job-level `if`, so the check lives in a step.
     steps:
-      - name: Require deploy role on manual dispatch
-        if: github.event_name == 'workflow_dispatch' && vars.AWS_DEPLOY_ROLE_ARN == ''
+      - name: Require deploy role
+        if: vars.AWS_DEPLOY_ROLE_ARN == ''
         run: |
           echo 'AWS_DEPLOY_ROLE_ARN is not configured for environment production.'
           exit 1
