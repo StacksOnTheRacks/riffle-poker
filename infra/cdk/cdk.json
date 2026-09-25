@@ -2,6 +2,7 @@
   "app": "npx tsx bin/app.ts",
   "context": {
     "@aws-cdk/aws-lambda:recognizeVersionProps": true,
-    "@aws-cdk/core:checkSecretUsage": true
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:bootstrapQualifier": "rifflepk"
   }
 }
