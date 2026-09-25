@@ -24,6 +24,10 @@ jobs:
           cache-dependency-path: infra/cdk/package-lock.json
       - run: npm ci
         working-directory: infra/cdk
+      - run: npm run build
+        working-directory: infra/cdk
+      - run: npm test
+        working-directory: infra/cdk
       - run: npx cdk synth
         working-directory: infra/cdk
         env:

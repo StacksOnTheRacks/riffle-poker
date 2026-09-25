@@ -9,16 +9,23 @@ import {
 } from 'aws-cdk-lib';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3Deployment from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '../../..');
+export const DASHBOARD_ARTIFACT_DIR = path.join(repoRoot, 'public/dashboard');
 
 export class MatchRuntimeStack extends Stack {
+  readonly webSocketUrl: string;
+
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
@@ -82,6 +89,7 @@ export class MatchRuntimeStack extends Stack {
       stageName: 'prod',
       autoDeploy: true,
     });
+    this.webSocketUrl = stage.url;
 
     handler.addToRolePolicy(
       new iam.PolicyStatement({
@@ -102,6 +110,42 @@ export class MatchRuntimeStack extends Stack {
 
     new CfnOutput(this, 'TableName', {
       value: table.tableName,
+    });
+
+    const siteBucket = new s3.Bucket(this, 'DashboardSiteBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+    });
+
+    const spaFallback = (httpStatus: number): cloudfront.ErrorResponse => ({
+      httpStatus,
+      responseHttpStatus: 200,
+      responsePagePath: '/index.html',
+      ttl: Duration.seconds(0),
+    });
+
+    const distribution = new cloudfront.Distribution(this, 'DashboardDistribution', {
+      defaultBehavior: {
+        origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(siteBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      },
+      defaultRootObject: 'index.html',
+      errorResponses: [spaFallback(403), spaFallback(404)],
+    });
+
+    new s3Deployment.BucketDeployment(this, 'DashboardSiteDeployment', {
+      destinationBucket: siteBucket,
+      sources: [
+        s3Deployment.Source.asset(DASHBOARD_ARTIFACT_DIR),
+        s3Deployment.Source.jsonData('config.json', { webSocketUrl: this.webSocketUrl }),
+      ],
+      distribution,
+      distributionPaths: ['/*'],
+    });
+
+    new CfnOutput(this, 'DashboardUrl', {
+      value: `https://${distribution.distributionDomainName}`,
     });
   }
 }
