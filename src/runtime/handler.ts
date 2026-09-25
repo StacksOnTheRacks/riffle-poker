@@ -1,9 +1,14 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'node:crypto';
-import { fanOutTableSnapshot, createPostToConnection } from './fanout.js';
-import { isUnsupportedGameplayAction, parseClientMessage } from './messages.js';
-import { buildPublicSnapshot } from './snapshot.js';
+import { createPostToConnection, fanOutSeatScopedSnapshots } from './fanout.js';
+import {
+  hasClientSuppliedState,
+  isUnsupportedGameplayAction,
+  parseClientMessage,
+} from './messages.js';
+import { handleLeave, handleSit } from './sit.js';
+import { handleStartHand } from './start-hand.js';
 import { createMatchStore, type MatchStore } from './store.js';
 import type {
   ErrorMessage,
@@ -21,6 +26,7 @@ export interface RuntimeDeps {
   ) => Promise<void>;
   now: () => string;
   randomTableId: () => string;
+  rngSeed?: () => number;
 }
 
 function errorMessage(code: string): ErrorMessage {
@@ -94,14 +100,107 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
         return { statusCode: 200 };
       }
 
-      const snapshot = buildPublicSnapshot(updated);
-      await fanOutTableSnapshot(
-        {
-          store: deps.store,
-          postToConnection: deps.postToConnection,
-        },
-        message.tableId,
-        snapshot,
+      const seats = await deps.store.listSeats(message.tableId);
+      await fanOutSeatScopedSnapshots(
+        { store: deps.store, postToConnection: deps.postToConnection },
+        updated,
+        seats,
+      );
+      return { statusCode: 200 };
+    }
+
+    const connection = await deps.store.getConnection(connectionId);
+    if (!connection?.tableId) {
+      await deps.postToConnection(connectionId, errorMessage('not_table_member'));
+      return { statusCode: 200 };
+    }
+
+    const table = await deps.store.getTable(connection.tableId);
+    if (!table) {
+      await deps.postToConnection(connectionId, errorMessage('table_not_found'));
+      return { statusCode: 200 };
+    }
+
+    const seats = await deps.store.listSeats(connection.tableId);
+
+    if (message.action === 'sit') {
+      if (hasClientSuppliedState(message)) {
+        await deps.postToConnection(connectionId, errorMessage('client_supplied_state'));
+        return { statusCode: 200 };
+      }
+
+      const result = await handleSit({
+        store: deps.store,
+        connection,
+        table,
+        seats,
+        message,
+      });
+
+      if (!result.ok) {
+        await deps.postToConnection(connectionId, errorMessage(result.code));
+        return { statusCode: 200 };
+      }
+
+      await deps.postToConnection(connectionId, {
+        type: 'sat',
+        seatId: result.seatId,
+        seatToken: result.seatToken,
+      });
+      await fanOutSeatScopedSnapshots(
+        { store: deps.store, postToConnection: deps.postToConnection },
+        result.table,
+        result.seats,
+      );
+      return { statusCode: 200 };
+    }
+
+    if (message.action === 'leave') {
+      const result = await handleLeave({
+        store: deps.store,
+        connection,
+        table,
+        seats,
+        message,
+      });
+
+      if (!result.ok) {
+        await deps.postToConnection(connectionId, errorMessage(result.code));
+        return { statusCode: 200 };
+      }
+
+      await fanOutSeatScopedSnapshots(
+        { store: deps.store, postToConnection: deps.postToConnection },
+        result.table,
+        result.seats,
+      );
+      return { statusCode: 200 };
+    }
+
+    if (message.action === 'start_hand') {
+      if (hasClientSuppliedState(message)) {
+        await deps.postToConnection(connectionId, errorMessage('client_supplied_state'));
+        return { statusCode: 200 };
+      }
+
+      const result = await handleStartHand({
+        store: deps.store,
+        connection,
+        table,
+        seats,
+        message,
+        rngSeed: deps.rngSeed?.(),
+      });
+
+      if (!result.ok) {
+        await deps.postToConnection(connectionId, errorMessage(result.code));
+        return { statusCode: 200 };
+      }
+
+      await fanOutSeatScopedSnapshots(
+        { store: deps.store, postToConnection: deps.postToConnection },
+        result.table,
+        result.seats,
       );
       return { statusCode: 200 };
     }

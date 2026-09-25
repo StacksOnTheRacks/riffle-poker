@@ -10,10 +10,11 @@ import {
   connGsiSk,
   connPk,
   META_SK,
+  seatSk,
   tableGsiPk,
   tablePk,
 } from './keys.js';
-import type { ConnectionRecord, RuntimeEnv, TableRecord } from './types.js';
+import type { RuntimeEnv, SeatRecord, TableRecord } from './types.js';
 
 export interface MatchStore {
   putConnection(connectionId: string): Promise<void>;
@@ -21,9 +22,62 @@ export interface MatchStore {
   getConnection(connectionId: string): Promise<ConnectionRecord | null>;
   createTable(tableId: string, createdAt: string): Promise<TableRecord>;
   bindConnectionToTable(connectionId: string, tableId: string): Promise<void>;
+  bindConnectionToSeat(connectionId: string, seatId: string): Promise<void>;
+  clearConnectionSeat(connectionId: string): Promise<void>;
   getTable(tableId: string): Promise<TableRecord | null>;
   incrementTableVersion(tableId: string, expectedVersion: number): Promise<TableRecord | null>;
   listConnectionsForTable(tableId: string): Promise<string[]>;
+  getSeat(tableId: string, seatId: string): Promise<SeatRecord | null>;
+  listSeats(tableId: string): Promise<SeatRecord[]>;
+  putSeat(tableId: string, seat: SeatRecord): Promise<void>;
+  deleteSeat(tableId: string, seatId: string): Promise<void>;
+  updateTableWithVersion(
+    tableId: string,
+    expectedVersion: number,
+    table: TableRecord,
+    seats: SeatRecord[],
+  ): Promise<TableRecord | null>;
+}
+
+function parseTableItem(item: Record<string, unknown>): TableRecord {
+  return {
+    tableId: String(item.tableId),
+    version: Number(item.version),
+    status: item.status === 'hand_in_progress' ? 'hand_in_progress' : 'open',
+    createdAt: String(item.createdAt),
+    defaultStack: Number(item.defaultStack ?? 2000),
+    maxSeats: Number(item.maxSeats ?? 8),
+    blinds: {
+      smallBlind: Number((item.blinds as { smallBlind?: number })?.smallBlind ?? 1),
+      bigBlind: Number((item.blinds as { bigBlind?: number })?.bigBlind ?? 2),
+    },
+    handNumber: Number(item.handNumber ?? 0),
+    buttonSeatId: item.buttonSeatId ? String(item.buttonSeatId) : undefined,
+    street: item.street ? (String(item.street) as TableRecord['street']) : null,
+    currentSeatId:
+      item.currentSeatId === undefined || item.currentSeatId === null
+        ? null
+        : String(item.currentSeatId),
+    pot: item.pot === undefined ? 0 : Number(item.pot),
+    board: Array.isArray(item.board) ? (item.board as TableRecord['board']) : [],
+  };
+}
+
+function parseSeatItem(item: Record<string, unknown>): SeatRecord {
+  const seat: SeatRecord = {
+    seatId: String(item.seatId),
+    displayName: String(item.displayName),
+    stack: Number(item.stack),
+    seatTokenHash: String(item.seatTokenHash),
+    connectionId: item.connectionId ? String(item.connectionId) : undefined,
+    folded: item.folded === true,
+    streetCommitted: Number(item.streetCommitted ?? 0),
+    handCommitted: Number(item.handCommitted ?? 0),
+  };
+  if (Array.isArray(item.hole) && item.hole.length === 2) {
+    seat.hole = [String(item.hole[0]), String(item.hole[1])] as SeatRecord['hole'];
+  }
+  return seat;
 }
 
 export function createMatchStore(
@@ -76,6 +130,7 @@ export function createMatchStore(
       return {
         connectionId: String(result.Item.connectionId),
         tableId: result.Item.tableId ? String(result.Item.tableId) : undefined,
+        seatId: result.Item.seatId ? String(result.Item.seatId) : undefined,
       };
     },
 
@@ -85,6 +140,14 @@ export function createMatchStore(
         version: 1,
         status: 'open',
         createdAt,
+        defaultStack: 2000,
+        maxSeats: 8,
+        blinds: { smallBlind: 1, bigBlind: 2 },
+        handNumber: 0,
+        pot: 0,
+        board: [],
+        street: null,
+        currentSeatId: null,
       };
 
       await client.send(
@@ -120,6 +183,35 @@ export function createMatchStore(
       );
     },
 
+    async bindConnectionToSeat(connectionId, seatId) {
+      await client.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: {
+            PK: connPk(connectionId),
+            SK: META_SK,
+          },
+          UpdateExpression: 'SET seatId = :seatId',
+          ExpressionAttributeValues: {
+            ':seatId': seatId,
+          },
+        }),
+      );
+    },
+
+    async clearConnectionSeat(connectionId) {
+      await client.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: {
+            PK: connPk(connectionId),
+            SK: META_SK,
+          },
+          UpdateExpression: 'REMOVE seatId',
+        }),
+      );
+    },
+
     async getTable(tableId) {
       const result = await client.send(
         new GetCommand({
@@ -135,12 +227,7 @@ export function createMatchStore(
         return null;
       }
 
-      return {
-        tableId: String(result.Item.tableId),
-        version: Number(result.Item.version),
-        status: 'open',
-        createdAt: String(result.Item.createdAt),
-      };
+      return parseTableItem(result.Item);
     },
 
     async incrementTableVersion(tableId, expectedVersion) {
@@ -169,12 +256,7 @@ export function createMatchStore(
           return null;
         }
 
-        return {
-          tableId: String(result.Attributes.tableId),
-          version: Number(result.Attributes.version),
-          status: 'open',
-          createdAt: String(result.Attributes.createdAt),
-        };
+        return parseTableItem(result.Attributes);
       } catch (error) {
         if (
           typeof error === 'object' &&
@@ -201,6 +283,124 @@ export function createMatchStore(
       );
 
       return (result.Items ?? []).map((item) => String(item.connectionId));
+    },
+
+    async getSeat(tableId, seatId) {
+      const result = await client.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            PK: tablePk(tableId),
+            SK: seatSk(seatId),
+          },
+        }),
+      );
+
+      if (!result.Item) {
+        return null;
+      }
+
+      return parseSeatItem(result.Item);
+    },
+
+    async listSeats(tableId) {
+      const result = await client.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+          ExpressionAttributeValues: {
+            ':pk': tablePk(tableId),
+            ':skPrefix': 'SEAT#',
+          },
+        }),
+      );
+
+      return (result.Items ?? [])
+        .map((item) => parseSeatItem(item))
+        .sort((a, b) => Number(a.seatId) - Number(b.seatId));
+    },
+
+    async putSeat(tableId, seat) {
+      await client.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: tablePk(tableId),
+            SK: seatSk(seat.seatId),
+            ...seat,
+          },
+        }),
+      );
+    },
+
+    async deleteSeat(tableId, seatId) {
+      await client.send(
+        new DeleteCommand({
+          TableName: tableName,
+          Key: {
+            PK: tablePk(tableId),
+            SK: seatSk(seatId),
+          },
+        }),
+      );
+    },
+
+    async updateTableWithVersion(tableId, expectedVersion, table, seats) {
+      try {
+        await client.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              PK: tablePk(tableId),
+              SK: META_SK,
+            },
+            UpdateExpression:
+              'SET #version = :nextVersion, #status = :status, handNumber = :handNumber, buttonSeatId = :buttonSeatId, street = :street, currentSeatId = :currentSeatId, pot = :pot, #board = :board',
+            ConditionExpression: '#version = :expectedVersion',
+            ExpressionAttributeNames: {
+              '#version': 'version',
+              '#status': 'status',
+              '#board': 'board',
+            },
+            ExpressionAttributeValues: {
+              ':expectedVersion': expectedVersion,
+              ':nextVersion': table.version,
+              ':status': table.status,
+              ':handNumber': table.handNumber,
+              ':buttonSeatId': table.buttonSeatId ?? null,
+              ':street': table.street ?? null,
+              ':currentSeatId': table.currentSeatId ?? null,
+              ':pot': table.pot ?? 0,
+              ':board': table.board ?? [],
+            },
+          }),
+        );
+
+        for (const seat of seats) {
+          await client.send(
+            new PutCommand({
+              TableName: tableName,
+              Item: {
+                PK: tablePk(tableId),
+                SK: seatSk(seat.seatId),
+                ...seat,
+              },
+            }),
+          );
+        }
+
+        return table;
+      } catch (error) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'name' in error &&
+          error.name === 'ConditionalCheckFailedException'
+        ) {
+          return null;
+        }
+        throw error;
+      }
     },
   };
 }

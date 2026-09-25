@@ -1,25 +1,84 @@
-export type TableStatus = 'open';
+import type { Card, Street } from '../rules/types.js';
+
+export type TableStatus = 'open' | 'hand_in_progress';
+
+export interface BlindsConfig {
+  smallBlind: number;
+  bigBlind: number;
+}
 
 export interface TableRecord {
   tableId: string;
   version: number;
   status: TableStatus;
   createdAt: string;
+  defaultStack: number;
+  maxSeats: number;
+  blinds: BlindsConfig;
+  handNumber: number;
+  buttonSeatId?: string;
+  street?: Street | null;
+  currentSeatId?: string | null;
+  pot?: number;
+  board?: Card[];
+}
+
+export interface SeatRecord {
+  seatId: string;
+  displayName: string;
+  stack: number;
+  seatTokenHash: string;
+  connectionId?: string;
+  hole?: [Card, Card];
+  folded?: boolean;
+  streetCommitted?: number;
+  handCommitted?: number;
 }
 
 export interface ConnectionRecord {
   connectionId: string;
   tableId?: string;
+  seatId?: string;
 }
 
 export interface ClientMessage {
   action: string;
   tableId?: string;
+  seatId?: string;
+  displayName?: string;
+  seatToken?: string;
+  stack?: number;
+  blinds?: BlindsConfig;
+  pot?: number;
+  deal?: unknown;
+  hole?: unknown;
+  holeCards?: unknown;
+  board?: unknown;
+  winners?: unknown;
+  street?: unknown;
 }
 
 export interface TableCreatedMessage {
   type: 'table_created';
   tableId: string;
+}
+
+export interface SatMessage {
+  type: 'sat';
+  seatId: string;
+  seatToken: string;
+}
+
+export interface PlayerSnapshotSeat {
+  seatId: string;
+  displayName: string;
+  isLocal: boolean;
+  stack: number;
+  inHand: boolean;
+  committed: number;
+  position: 'D' | 'SB' | 'BB' | null;
+  acting: boolean;
+  folded: boolean;
 }
 
 export interface TableSnapshotMessage {
@@ -28,6 +87,15 @@ export interface TableSnapshotMessage {
   version: number;
   status: TableStatus;
   createdAt: string;
+  handNumber: number | null;
+  street: Street | null;
+  blindsLabel: string;
+  seatedPlayersLabel: string;
+  pot: number;
+  buttonSeatId: string | null;
+  currentSeatId: string | null;
+  seats: PlayerSnapshotSeat[];
+  pocketCards?: [Card, Card];
 }
 
 export interface ErrorMessage {
@@ -35,7 +103,11 @@ export interface ErrorMessage {
   code: string;
 }
 
-export type OutboundMessage = TableCreatedMessage | TableSnapshotMessage | ErrorMessage;
+export type OutboundMessage =
+  | TableCreatedMessage
+  | SatMessage
+  | TableSnapshotMessage
+  | ErrorMessage;
 
 export interface WebSocketEvent {
   requestContext: {
@@ -55,3 +127,9 @@ export interface RuntimeEnv {
   tableName: string;
   awsRegion?: string;
 }
+
+export const TABLE_DEFAULTS = {
+  defaultStack: 2000,
+  maxSeats: 8,
+  blinds: { smallBlind: 1, bigBlind: 2 },
+} as const;

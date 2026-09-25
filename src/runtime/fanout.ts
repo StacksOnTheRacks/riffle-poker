@@ -2,8 +2,9 @@ import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
+import { buildSeatScopedSnapshot } from './snapshot.js';
 import type { MatchStore } from './store.js';
-import type { OutboundMessage, WebSocketEvent } from './types.js';
+import type { OutboundMessage, SeatRecord, TableRecord, WebSocketEvent } from './types.js';
 
 export interface FanoutDeps {
   store: MatchStore;
@@ -44,6 +45,37 @@ export async function fanOutTableSnapshot(
   for (const connectionId of connectionIds) {
     try {
       await deps.postToConnection(connectionId, message);
+      delivered += 1;
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'name' in error &&
+        (error.name === 'GoneException' || error.name === '410')
+      ) {
+        await deps.store.deleteConnection(connectionId);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return delivered;
+}
+
+export async function fanOutSeatScopedSnapshots(
+  deps: FanoutDeps,
+  table: TableRecord,
+  seats: SeatRecord[],
+): Promise<number> {
+  const connectionIds = await deps.store.listConnectionsForTable(table.tableId);
+  let delivered = 0;
+
+  for (const connectionId of connectionIds) {
+    const connection = await deps.store.getConnection(connectionId);
+    const snapshot = buildSeatScopedSnapshot(table, seats, connection);
+    try {
+      await deps.postToConnection(connectionId, snapshot);
       delivered += 1;
     } catch (error) {
       if (
