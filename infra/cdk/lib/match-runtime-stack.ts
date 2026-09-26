@@ -27,6 +27,9 @@ const repoRoot = path.join(__dirname, '../../..');
 export const DASHBOARD_ARTIFACT_DIR = path.join(repoRoot, 'public/dashboard');
 export const PLAY_ORIGIN_ARTIFACT_DIR = path.join(repoRoot, 'public/dashboard-riffle');
 
+/** Matches RifflePokerMatchRuntimeCfnExec layer:MatchRuntimeStack*. */
+export const PLAY_ORIGIN_DEPLOY_LAYER_NAME = 'MatchRuntimeStackPlayOriginCli';
+
 export class MatchRuntimeStack extends Stack {
   readonly webSocketUrl: string;
 
@@ -158,7 +161,7 @@ export class MatchRuntimeStack extends Stack {
       enforceSSL: true,
     });
 
-    new s3Deployment.BucketDeployment(this, 'PlayOriginDeployment', {
+    const playOriginDeployment = new s3Deployment.BucketDeployment(this, 'PlayOriginDeployment', {
       destinationBucket: playOriginBucket,
       destinationKeyPrefix: 'riffle',
       sources: [
@@ -166,6 +169,7 @@ export class MatchRuntimeStack extends Stack {
         s3Deployment.Source.jsonData('config.json', { webSocketUrl: this.webSocketUrl }),
       ],
     });
+    nameBucketDeployLayer(playOriginDeployment, PLAY_ORIGIN_DEPLOY_LAYER_NAME);
 
     new ssm.StringParameter(this, 'PlayOriginBucketParameter', {
       parameterName: '/galaxyclass/riffle/play-origin-bucket',
@@ -214,5 +218,13 @@ export class MatchRuntimeStack extends Stack {
     new CfnOutput(this, 'PlayUrl', {
       value: `https://galaxyclass.app/riffle/${seededTableId}`,
     });
+  }
+}
+
+function nameBucketDeployLayer(deployment: Construct, layerName: string): void {
+  const layer = deployment.node.findAll().find((child) => child.node.id === 'AwsCliLayer');
+  const cfnLayer = layer?.node.defaultChild;
+  if (cfnLayer instanceof lambda.CfnLayerVersion) {
+    cfnLayer.layerName = layerName;
   }
 }

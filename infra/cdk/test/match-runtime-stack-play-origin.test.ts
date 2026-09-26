@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { before, describe, it } from 'node:test';
-import { PLAY_ORIGIN_ARTIFACT_DIR } from '../lib/match-runtime-stack.js';
+import { PLAY_ORIGIN_ARTIFACT_DIR, PLAY_ORIGIN_DEPLOY_LAYER_NAME } from '../lib/match-runtime-stack.js';
 import {
   CREDENTIAL_PATTERNS,
   listTextArtifacts,
@@ -166,6 +166,14 @@ describe('MatchRuntimeStack play origin', () => {
     }
     assert.doesNotMatch(serialized, /riffle\.seat|hole/i);
     assert.doesNotMatch(serialized, new RegExp(seedLogicalId));
+  });
+
+  it('names the play-origin deploy layer for the cfn exec role', () => {
+    const layers = resourcesOfType(synth.template, 'AWS::Lambda::LayerVersion');
+    const play = layers.find(([id]) => id.startsWith('PlayOriginDeployment'));
+    assert.ok(play);
+    assert.equal(play[1].Properties?.LayerName, PLAY_ORIGIN_DEPLOY_LAYER_NAME);
+    assert.match(PLAY_ORIGIN_DEPLOY_LAYER_NAME, /^MatchRuntimeStack/);
   });
 
   it('overwrites the play-origin SSM parameter with the bucket name only', () => {
