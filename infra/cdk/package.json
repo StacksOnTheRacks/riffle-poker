@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "synth": "cdk synth",
+    "pretest": "npm run build:dashboard-riffle --prefix ../..",
     "test": "tsx --test test/*.test.ts",
     "deploy": "cdk deploy --all --require-approval never"
   },

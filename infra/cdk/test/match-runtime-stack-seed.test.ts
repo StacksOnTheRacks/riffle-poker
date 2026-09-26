@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { before, describe, it } from 'node:test';
-import { DASHBOARD_ARTIFACT_DIR } from '../lib/match-runtime-stack.js';
+import { DASHBOARD_ARTIFACT_DIR, PLAY_ORIGIN_ARTIFACT_DIR } from '../lib/match-runtime-stack.js';
 import {
   listTextArtifacts,
   resourcesOfType,
@@ -16,7 +16,6 @@ describe('MatchRuntimeStack seeded table', () => {
   let synth: SynthResult;
   let seedLogicalId: string;
   let matchTableId: string;
-  let distributionId: string;
 
   before(() => {
     synth = synthMatchRuntimeStack();
@@ -24,15 +23,13 @@ describe('MatchRuntimeStack seeded table', () => {
     assert.equal(seeds.length, 1);
     seedLogicalId = seeds[0]![0];
     matchTableId = Object.keys(synth.template.findResources('AWS::DynamoDB::Table'))[0]!;
-    distributionId = Object.keys(
-      synth.template.findResources('AWS::CloudFront::Distribution'),
-    )[0]!;
   });
 
   it('adds exactly one seed custom resource bound to the match table', () => {
     const [, seed] = resourcesOfType(synth.template, 'Custom::SeededPokerTable')[0]!;
     assert.deepEqual(seed.Properties?.TableName, { Ref: matchTableId });
     assert.ok(seed.Properties?.ServiceToken, 'backed by a provider');
+    assert.deepEqual(Object.keys(seed.Properties ?? {}).sort(), ['ServiceToken', 'TableName']);
   });
 
   it('exports SeededTableId from the custom resource, not a hardcoded id', () => {
@@ -41,20 +38,12 @@ describe('MatchRuntimeStack seeded table', () => {
     assert.deepEqual(value, { 'Fn::GetAtt': [seedLogicalId, 'TableId'] });
   });
 
-  it('exports PlayUrl as https:// + distribution domain + / + seeded id', () => {
+  it('exports PlayUrl as https://galaxyclass.app/riffle/ plus the seeded table id', () => {
     const value = synth.template.findOutputs('PlayUrl').PlayUrl?.Value as {
       'Fn::Join': [string, unknown[]];
     };
     assert.deepEqual(value, {
-      'Fn::Join': [
-        '',
-        [
-          'https://',
-          { 'Fn::GetAtt': [distributionId, 'DomainName'] },
-          '/',
-          { 'Fn::GetAtt': [seedLogicalId, 'TableId'] },
-        ],
-      ],
+      'Fn::Join': ['', ['https://galaxyclass.app/riffle/', { 'Fn::GetAtt': [seedLogicalId, 'TableId'] }]],
     });
     assert.doesNotMatch(JSON.stringify(value), UUID_LIKE);
   });
@@ -86,13 +75,19 @@ describe('MatchRuntimeStack seeded table', () => {
   });
 
   it('keeps the seeded id out of the SPA artifact and config.json', () => {
-    for (const file of listTextArtifacts(DASHBOARD_ARTIFACT_DIR)) {
-      const body = fs.readFileSync(file, 'utf8');
-      assert.doesNotMatch(body, /SeededTableId|PlayUrl/);
+    for (const dir of [DASHBOARD_ARTIFACT_DIR, PLAY_ORIGIN_ARTIFACT_DIR]) {
+      for (const file of listTextArtifacts(dir)) {
+        const body = fs.readFileSync(file, 'utf8');
+        assert.doesNotMatch(body, /SeededTableId|PlayUrl/);
+      }
     }
 
-    const [, deployment] = resourcesOfType(synth.template, 'Custom::CDKBucketDeployment')[0]!;
-    assert.doesNotMatch(JSON.stringify(deployment.Properties?.SourceMarkers), new RegExp(seedLogicalId));
+    for (const [, deployment] of resourcesOfType(synth.template, 'Custom::CDKBucketDeployment')) {
+      assert.doesNotMatch(
+        JSON.stringify(deployment.Properties?.SourceMarkers),
+        new RegExp(seedLogicalId),
+      );
+    }
   });
 
   it('adds no public create path, Cognito, or custom domain', () => {

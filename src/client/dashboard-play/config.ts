@@ -1,10 +1,12 @@
+import { publicBase } from '../dashboard/public-base.js';
+
 export interface PlayConfig {
   webSocketUrl: string;
 }
 
 export async function loadPlayConfig(fetchImpl: typeof fetch): Promise<PlayConfig | null> {
   try {
-    const response = await fetchImpl('/config.json', { cache: 'no-store' });
+    const response = await fetchImpl(`${publicBase()}/config.json`, { cache: 'no-store' });
     if (!response.ok) {
       return null;
     }

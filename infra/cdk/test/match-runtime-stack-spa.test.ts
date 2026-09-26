@@ -6,9 +6,10 @@ import { Match } from 'aws-cdk-lib/assertions';
 import { DASHBOARD_ARTIFACT_DIR } from '../lib/match-runtime-stack.js';
 import {
   CREDENTIAL_PATTERNS,
-  findStagedFile,
   listTextArtifacts,
   resourcesOfType,
+  stagedConfigForDeployment,
+  stagedIndexHtml,
   synthMatchRuntimeStack,
   type SynthResult,
 } from './support.js';
@@ -109,24 +110,24 @@ describe('MatchRuntimeStack dashboard SPA hosting', () => {
 
   it('deploys the dashboard artifact and a config.json with only webSocketUrl', () => {
     const deployments = resourcesOfType(synth.template, 'Custom::CDKBucketDeployment');
-    assert.equal(deployments.length, 1);
-    const props = deployments[0]![1].Properties!;
+    const root = deployments.find(
+      ([, resource]) => resource.Properties?.DestinationBucketKeyPrefix === undefined,
+    );
+    assert.ok(root, 'root dashboard BucketDeployment remains');
+    const props = root[1].Properties!;
 
-    const [siteBucketId] = Object.keys(synth.template.findResources('AWS::S3::Bucket'));
-    assert.deepEqual(props.DestinationBucketName, { Ref: siteBucketId });
     assert.equal((props.SourceObjectKeys as unknown[]).length, 2);
+    assert.ok(props.DistributionId, 'root deployment still invalidates the dashboard distribution');
 
     assert.ok(fs.existsSync(path.join(DASHBOARD_ARTIFACT_DIR, 'index.html')));
-    const stagedIndex = findStagedFile(synth.outdir, 'index.html');
-    assert.ok(stagedIndex, 'index.html is staged as a deployment source');
-    assert.match(fs.readFileSync(stagedIndex, 'utf8'), /dashboard-play\.js/);
+    const rootHtml = fs.readFileSync(stagedIndexHtml(synth.outdir, false), 'utf8');
+    assert.match(rootHtml, /\/dashboard-play\.js/);
+    assert.doesNotMatch(rootHtml, /\/riffle\//);
 
-    const stagedConfig = findStagedFile(synth.outdir, 'config.json');
-    assert.ok(stagedConfig, 'config.json is staged as a deployment source');
-    const rawConfig = fs.readFileSync(stagedConfig, 'utf8');
+    const { raw: rawConfig, marker } = stagedConfigForDeployment(synth.outdir, props);
     const markerMatch = rawConfig.match(/^\{"webSocketUrl":(<<marker:[^>]+>>)\}$/);
     assert.ok(markerMatch, `config.json has only webSocketUrl bound to a deploy-time token: ${rawConfig}`);
-    const marker = markerMatch[1]!;
+    assert.equal(markerMatch[1], marker);
 
     const markers = (props.SourceMarkers as Array<Record<string, unknown>>).find(
       (entry) => marker in entry,
