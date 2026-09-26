@@ -1,3 +1,5 @@
+import { createIcon, createVisuallyHidden } from './assets.js';
+
 export const DASHBOARD_TABLE_SHELL_STYLE_ID = 'dashboard-table-shell-styles';
 
 export interface DashboardTableShellProps {
@@ -47,8 +49,13 @@ function createMetaField(
   valueEl.className = 'dashboard-meta-value';
   valueEl.textContent = value;
 
-  wrapper.append(labelEl, valueEl);
+  // The space keeps the accessible/text value readable ("Hand #12"); flex layout ignores it.
+  wrapper.append(labelEl, ' ', valueEl);
   return wrapper;
+}
+
+function createMetaDot(): HTMLElement {
+  return createIcon('dot', 'dashboard-meta-dot');
 }
 
 function createControlButton(label: string, className: string): HTMLButtonElement {
@@ -57,6 +64,19 @@ function createControlButton(label: string, className: string): HTMLButtonElemen
   button.className = className;
   button.textContent = label;
   return button;
+}
+
+function createIconButton(label: string, className: string, icon: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `dashboard-icon-button ${className}`;
+  button.title = label;
+  button.append(createIcon(icon), createVisuallyHidden(label));
+  return button;
+}
+
+function formatHandValue(handNumber: number | null): string {
+  return handNumber === null ? '—' : `#${handNumber}`;
 }
 
 function renderTopBar(
@@ -76,27 +96,43 @@ function renderTopBar(
   const identityRow = document.createElement('div');
   identityRow.className = 'dashboard-top-bar-identity';
 
+  const brand = document.createElement('div');
+  brand.className = 'dashboard-brand';
+
   const tableName = document.createElement('h1');
   tableName.className = 'dashboard-table-name';
   tableName.dataset.field = 'table-name';
   tableName.textContent = props.tableName;
 
-  identityRow.append(tableName);
+  if (breakpoint !== 'phone') {
+    const wordmark = document.createElement('span');
+    wordmark.className = 'dashboard-wordmark';
+    wordmark.textContent = 'riffle';
+
+    const divider = document.createElement('span');
+    divider.className = 'dashboard-brand-divider';
+    divider.setAttribute('aria-hidden', 'true');
+
+    const badge = document.createElement('span');
+    badge.className = 'dashboard-game-badge';
+    badge.textContent = "No-Limit Hold'em";
+
+    brand.append(wordmark, divider, tableName, badge);
+  } else {
+    brand.append(tableName);
+  }
 
   const controls = document.createElement('div');
   controls.className = 'dashboard-top-bar-controls';
 
   if (breakpoint === 'phone') {
-    controls.append(createControlButton('More', 'dashboard-control-more'));
+    controls.append(createIconButton('More', 'dashboard-control-more', 'more'));
   } else {
     controls.append(
-      createControlButton('Settings', 'dashboard-control-settings'),
+      createIconButton('Settings', 'dashboard-control-settings', 'settings'),
       createControlButton('Leave table', 'dashboard-control-leave'),
     );
   }
-
-  identityRow.append(controls);
-  topBar.append(identityRow);
 
   const metaRow = document.createElement('div');
   metaRow.className = 'dashboard-top-bar-meta';
@@ -106,17 +142,30 @@ function renderTopBar(
     summary.className = 'dashboard-hand-summary';
     summary.dataset.field = 'hand-summary';
     summary.textContent = `${formatHandNumber(props.handNumber)} · ${props.blindsLabel} · ${formatStreet(props.street)}`;
-    metaRow.append(summary);
-  } else {
-    metaRow.append(
-      createMetaField('hand-number', 'Hand', formatHandNumber(props.handNumber)),
-      createMetaField('blinds', 'Blinds', props.blindsLabel),
-      createMetaField('players', 'Players', props.seatedPlayersLabel),
-      createMetaField('street', 'Street', formatStreet(props.street)),
-    );
+    brand.append(summary);
+    identityRow.append(brand, controls);
+    topBar.append(identityRow);
+    return;
   }
 
-  topBar.append(metaRow);
+  metaRow.append(
+    createMetaField('hand-number', 'Hand', formatHandValue(props.handNumber)),
+    createMetaDot(),
+    createMetaField('blinds', 'Blinds', props.blindsLabel),
+    createMetaDot(),
+    createMetaField('players', 'Players', props.seatedPlayersLabel),
+    createMetaDot(),
+    createMetaField('street', 'Street', formatStreet(props.street)),
+  );
+
+  if (breakpoint === 'desktop') {
+    identityRow.append(brand);
+    topBar.append(identityRow, metaRow, controls);
+    return;
+  }
+
+  identityRow.append(brand, controls);
+  topBar.append(identityRow, metaRow);
 }
 
 function createRegion(

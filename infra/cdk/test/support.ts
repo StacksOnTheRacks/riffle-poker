@@ -44,6 +44,22 @@ export function findStagedFile(outdir: string, fileName: string): string | null 
   return null;
 }
 
+const TEXT_ARTIFACT_EXTENSIONS = new Set(['.html', '.js', '.css', '.json', '.svg', '.txt', '.map']);
+
+/** Text files (recursively) in a built artifact dir; binary images/fonts are skipped. */
+export function listTextArtifacts(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listTextArtifacts(full));
+    } else if (entry.isFile() && TEXT_ARTIFACT_EXTENSIONS.has(path.extname(entry.name))) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
 export const CREDENTIAL_PATTERNS = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/,
   /aws_secret_access_key/i,

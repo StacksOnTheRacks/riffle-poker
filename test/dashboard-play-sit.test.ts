@@ -269,7 +269,9 @@ describe('two anonymous players complete a hand through the runtime', () => {
     expect((await bridge.store.getSeat(TABLE_ID, '1'))?.stack).toBe(2000);
     expect((await bridge.store.getSeat(TABLE_ID, '2'))?.displayName).toBe('Bob Loblaw');
     expect(localTile(alice.root)).toContain('Bob Loblaw');
-    expect(bob.root.querySelector('[data-local="true"] [data-field="initials"]')?.textContent).toBe('BL');
+    expect(
+      bob.root.querySelector('[data-local="true"] [data-field="avatar"]')?.getAttribute('src'),
+    ).toMatch(/^\/assets\/avatars\/\d+\.webp$/);
     expect(bob.root.querySelector('[data-region="my-hand"]')?.textContent).toContain('2,000');
 
     const deal = alice.root.querySelector<HTMLButtonElement>('[data-field="deal-hand"]')!;

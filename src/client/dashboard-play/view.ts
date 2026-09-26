@@ -1,4 +1,5 @@
 import type { PlayerSnapshotSeat, TableSnapshotMessage } from '../../runtime/types.js';
+import { defaultAvatarUrl } from '../dashboard/assets.js';
 import { renderBoardAndPot, type BoardCard } from '../dashboard/board-and-pot.js';
 import { renderPlayerRow, type PlayerRowSeat } from '../dashboard/player-row.js';
 import { renderDashboardTableShell } from '../dashboard/table-shell.js';
@@ -14,6 +15,7 @@ function toPlayerRowSeat(seat: PlayerSnapshotSeat, snapshot: TableSnapshotMessag
     seatId: seat.seatId,
     displayName: seat.displayName,
     isLocal: seat.isLocal,
+    avatarUrl: defaultAvatarUrl(`${snapshot.tableId}:${seat.seatId}:${seat.displayName}`),
     stack: seat.stack,
     inHand: seat.inHand,
     allIn: seat.allIn,
@@ -30,6 +32,9 @@ function toPlayerRowSeat(seat: PlayerSnapshotSeat, snapshot: TableSnapshotMessag
   }
   if (seat.holeCards) {
     row.holeCards = seat.holeCards.map(parseCard);
+  }
+  if (seat.isLocal && seat.acting && snapshot.toCall !== undefined && snapshot.toCall !== null) {
+    row.toCall = snapshot.toCall;
   }
   return row;
 }
