@@ -125,13 +125,7 @@ export function renderSeatedControls(
       }
     });
 
-    const leave = button('seated-leave-button', 'leave-seat', 'Leave seat');
-    leave.disabled = state.pending;
-    leave.addEventListener('click', () => {
-      if (!leave.disabled) {
-        send({ action: 'leave' });
-      }
-    });
+    const leave = leaveButton(state, send);
 
     const idle = busted
       ? 'Out of chips. Leave your seat and sit again to rebuy.'
@@ -144,6 +138,18 @@ export function renderSeatedControls(
 
   const acting = snapshot.seats.find((seat) => seat.acting);
   region.append(
+    leaveButton(state, send),
     statusLine(state.notice ?? (acting ? `Waiting for ${acting.displayName}` : 'Waiting…')),
   );
+}
+
+function leaveButton(state: SeatedControlsState, send: (action: SeatAction) => void): HTMLButtonElement {
+  const leave = button('seated-leave-button', 'leave-seat', 'Leave seat');
+  leave.disabled = state.pending;
+  leave.addEventListener('click', () => {
+    if (!leave.disabled) {
+      send({ action: 'leave' });
+    }
+  });
+  return leave;
 }

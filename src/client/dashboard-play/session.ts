@@ -168,8 +168,18 @@ export async function startDashboardPlay(deps: DashboardPlayDeps): Promise<Dashb
     if (!snapshot || session.phase !== 'joined') {
       return;
     }
-    const regions = renderSnapshotShell(root, snapshot);
     const local = snapshot.seats.find((seat) => seat.isLocal);
+    const regions = renderSnapshotShell(
+      root,
+      snapshot,
+      local && seatToken
+        ? () => {
+            if (!seated.pending) {
+              sendSeatAction({ action: 'leave' });
+            }
+          }
+        : undefined,
+    );
 
     if (!local || !seatToken) {
       regions.myHand.replaceChildren();

@@ -18,6 +18,7 @@ export async function handleSeatDisconnect(
   tableId: string,
   seatId: string,
   connectionId: string,
+  now: string,
 ): Promise<SeatDisconnectResult | null> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const table = await store.getTable(tableId);
@@ -30,7 +31,8 @@ export async function handleSeatDisconnect(
       return null;
     }
 
-    const { connectionId: _dropped, ...awaySeat } = seat;
+    const { connectionId: _dropped, ...rest } = seat;
+    const awaySeat: SeatRecord = { ...rest, awaySince: now };
     const marked = seats.map((row) => (row.seatId === seatId ? awaySeat : row));
     const folded = foldAwayActors({ ...table, version: table.version + 1 }, marked);
 

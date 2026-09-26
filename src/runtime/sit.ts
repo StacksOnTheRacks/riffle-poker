@@ -1,4 +1,5 @@
 import { validateDisplayName } from '../shared/display-name.js';
+import { foldAwayActors } from './act.js';
 import { isBetweenHands, isSeatAway } from './hand-state.js';
 import { hashSeatToken, mintSeatToken, verifySeatToken } from './seat-token.js';
 import type { MatchStore } from './store.js';
@@ -26,6 +27,7 @@ export interface SitContext {
   table: TableRecord;
   seats: SeatRecord[];
   message: ClientMessage;
+  now?: string;
 }
 
 export interface SitSuccess {
@@ -125,7 +127,7 @@ export async function handleResumeSeat(ctx: SitContext): Promise<SitResult> {
   }
 
   const seat = findSeatByToken(seats, message.seatToken);
-  if (!seat) {
+  if (!seat || seat.leaveAfterHand) {
     return { ok: false, code: 'invalid_seat_token' };
   }
 
@@ -133,7 +135,8 @@ export async function handleResumeSeat(ctx: SitContext): Promise<SitResult> {
     return { ok: false, code: 'already_seated' };
   }
 
-  const resumedSeat: SeatRecord = { ...seat, connectionId: connection.connectionId };
+  const { awaySince: _awaySince, ...present } = seat;
+  const resumedSeat: SeatRecord = { ...present, connectionId: connection.connectionId };
   await ctx.store.bindConnectionToSeat(connection.connectionId, seat.seatId);
 
   const updatedTable = await ctx.store.updateTableWithVersion(
@@ -158,10 +161,6 @@ export async function handleResumeSeat(ctx: SitContext): Promise<SitResult> {
 export async function handleLeave(ctx: SitContext): Promise<SitResult> {
   const { connection, table, seats, message } = ctx;
 
-  if (!isBetweenHands(table)) {
-    return { ok: false, code: 'hand_in_progress' };
-  }
-
   if (!message.seatToken) {
     return { ok: false, code: 'invalid_seat_token' };
   }
@@ -173,6 +172,10 @@ export async function handleLeave(ctx: SitContext): Promise<SitResult> {
 
   if (!verifySeatToken(message.seatToken, seat.seatTokenHash)) {
     return { ok: false, code: 'invalid_seat_token' };
+  }
+
+  if (!isBetweenHands(table)) {
+    return leaveMidHand(ctx, seat);
   }
 
   await ctx.store.deleteSeat(table.tableId, seat.seatId);
@@ -190,6 +193,41 @@ export async function handleLeave(ctx: SitContext): Promise<SitResult> {
     seatId: seat.seatId,
     table: updatedTable,
     seats: remainingSeats,
+  };
+}
+
+/**
+ * Detaches the player now and folds them when the action reaches them; the
+ * seat stays until the hand is over so pots and the button stay consistent.
+ */
+async function leaveMidHand(ctx: SitContext, seat: SeatRecord): Promise<SitResult> {
+  const { connection, table, seats } = ctx;
+  const { connectionId: _detached, ...rest } = seat;
+  const departing: SeatRecord = {
+    ...rest,
+    awaySince: ctx.now ?? new Date().toISOString(),
+    leaveAfterHand: true,
+  };
+  const marked = seats.map((row) => (row.seatId === seat.seatId ? departing : row));
+  const folded = foldAwayActors({ ...table, version: table.version + 1 }, marked);
+
+  const persisted = await ctx.store.updateTableWithVersion(
+    table.tableId,
+    table.version,
+    folded.table,
+    folded.seats,
+  );
+  if (!persisted) {
+    return { ok: false, code: 'version_conflict' };
+  }
+  await ctx.store.clearConnectionSeat(connection.connectionId);
+
+  return {
+    ok: true,
+    seatToken: '',
+    seatId: seat.seatId,
+    table: folded.table,
+    seats: folded.seats,
   };
 }
 

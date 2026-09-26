@@ -40,6 +40,10 @@ export interface SeatRecord {
   stack: number;
   seatTokenHash: string;
   connectionId?: string;
+  /** ISO time the seat lost its connection; seats away past the grace period are removed between hands. */
+  awaySince?: string;
+  /** Player left mid-hand; the seat is removed once the hand is over. */
+  leaveAfterHand?: boolean;
   hole?: [Card, Card];
   folded?: boolean;
   streetCommitted?: number;

@@ -35,6 +35,7 @@ export class RuntimeBridge {
   private sockets = new Map<string, BridgedSocket>();
   private queue: Promise<unknown> = Promise.resolve();
   private counter = 0;
+  nowMs = Date.parse('2026-09-25T12:00:00.000Z');
   readonly handler;
 
   constructor(rngSeed = 42) {
@@ -43,7 +44,7 @@ export class RuntimeBridge {
       postToConnection: async (connectionId, message) => {
         this.sockets.get(connectionId)?.receive(message);
       },
-      now: () => '2026-09-25T12:00:00.000Z',
+      now: () => new Date(this.nowMs).toISOString(),
       rngSeed: () => rngSeed,
     });
   }

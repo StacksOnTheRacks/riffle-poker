@@ -9,6 +9,7 @@ import {
 import { handleAct, isBettingAction } from './act.js';
 import { handleSeatDisconnect } from './disconnect.js';
 import { handleLeave, handleResumeSeat, handleSit } from './sit.js';
+import { reapDepartedSeats } from './reap.js';
 import { handleStartHand } from './start-hand.js';
 import { createMatchStore, type MatchStore } from './store.js';
 import type {
@@ -54,6 +55,7 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
           closing.tableId,
           closing.seatId,
           connectionId,
+          deps.now(),
         );
         if (result) {
           await fanOutSeatScopedSnapshots(
@@ -100,9 +102,15 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
       }
 
       await deps.store.bindConnectionToTable(connectionId, message.tableId);
+      const current = await reapDepartedSeats(
+        deps.store,
+        existing,
+        await deps.store.listSeats(message.tableId),
+        deps.now(),
+      );
       const updated = await deps.store.incrementTableVersion(
         message.tableId,
-        existing.version,
+        current.table.version,
       );
 
       if (!updated) {
@@ -113,11 +121,10 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
         return { statusCode: 200 };
       }
 
-      const seats = await deps.store.listSeats(message.tableId);
       await fanOutSeatScopedSnapshots(
         { store: deps.store, postToConnection: deps.postToConnection },
         updated,
-        seats,
+        current.seats,
       );
       return { statusCode: 200 };
     }
@@ -128,13 +135,25 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
       return { statusCode: 200 };
     }
 
-    const table = await deps.store.getTable(connection.tableId);
-    if (!table) {
+    const storedTable = await deps.store.getTable(connection.tableId);
+    if (!storedTable) {
       await deps.postToConnection(connectionId, errorMessage('table_not_found'));
       return { statusCode: 200 };
     }
 
-    const seats = await deps.store.listSeats(connection.tableId);
+    const { table, seats, reaped } = await reapDepartedSeats(
+      deps.store,
+      storedTable,
+      await deps.store.listSeats(connection.tableId),
+      deps.now(),
+    );
+    if (reaped) {
+      await fanOutSeatScopedSnapshots(
+        { store: deps.store, postToConnection: deps.postToConnection },
+        table,
+        seats,
+      );
+    }
 
     if (message.action === 'sit') {
       if (hasClientSuppliedState(message)) {
@@ -202,6 +221,7 @@ export function createRuntimeHandler(deps: RuntimeDeps) {
         table,
         seats,
         message,
+        now: deps.now(),
       });
 
       if (!result.ok) {

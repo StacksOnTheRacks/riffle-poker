@@ -49,6 +49,7 @@ export interface DashboardRegions {
 export function renderSnapshotShell(
   root: HTMLElement,
   snapshot: TableSnapshotMessage,
+  onLeaveTable?: () => void,
 ): DashboardRegions {
   renderDashboardTableShell(root, {
     tableName: DASHBOARD_TABLE_NAME,
@@ -56,6 +57,7 @@ export function renderSnapshotShell(
     seatedPlayersLabel: snapshot.seatedPlayersLabel,
     handNumber: snapshot.handNumber,
     street: snapshot.street,
+    onLeaveTable,
   });
 
   const region = (name: string): HTMLElement =>

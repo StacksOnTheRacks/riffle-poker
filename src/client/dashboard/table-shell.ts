@@ -8,6 +8,8 @@ export interface DashboardTableShellProps {
   seatedPlayersLabel: string;
   handNumber: number | null;
   street: string | null;
+  /** Shown only while the viewer holds a seat. */
+  onLeaveTable?: () => void;
 }
 
 export type DashboardBreakpoint = 'desktop' | 'tablet' | 'phone';
@@ -128,10 +130,14 @@ function renderTopBar(
   if (breakpoint === 'phone') {
     controls.append(createIconButton('More', 'dashboard-control-more', 'more'));
   } else {
-    controls.append(
-      createIconButton('Settings', 'dashboard-control-settings', 'settings'),
-      createControlButton('Leave table', 'dashboard-control-leave'),
-    );
+    controls.append(createIconButton('Settings', 'dashboard-control-settings', 'settings'));
+    const { onLeaveTable } = props;
+    if (onLeaveTable) {
+      const leave = createControlButton('Leave table', 'dashboard-control-leave');
+      leave.dataset.field = 'leave-table';
+      leave.addEventListener('click', () => onLeaveTable());
+      controls.append(leave);
+    }
   }
 
   const metaRow = document.createElement('div');
