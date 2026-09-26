@@ -59,8 +59,10 @@ describe('play view leak prevention', () => {
     const response = await fixture.app.request(publicPlayTableUrl(fixture.matchId));
     const body = await response.json();
     expect(collectDenylistedKeys(body).size).toBe(0);
-    expect(JSON.stringify(body)).not.toContain(fixture.holeA?.[0] ?? '');
-    expect(JSON.stringify(body)).not.toContain(fixture.holeB?.[0] ?? '');
+    const text = JSON.stringify(body);
+    for (const card of [...(fixture.holeA ?? []), ...(fixture.holeB ?? [])]) {
+      expect(text).not.toContain(JSON.stringify(card));
+    }
   });
 
   it('fails closed when identityStore is not injected', async () => {
