@@ -100,6 +100,12 @@ function parseSeatItem(item: Record<string, unknown>): SeatRecord {
     handCommitted: Number(item.handCommitted ?? 0),
     allIn: item.allIn === true,
   };
+  if (item.awaySince) {
+    seat.awaySince = String(item.awaySince);
+  }
+  if (item.leaveAfterHand === true) {
+    seat.leaveAfterHand = true;
+  }
   if (Array.isArray(item.hole) && item.hole.length === 2) {
     seat.hole = [String(item.hole[0]), String(item.hole[1])] as SeatRecord['hole'];
   }

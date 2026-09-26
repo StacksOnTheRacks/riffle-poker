@@ -71,7 +71,7 @@ describe('dashboard table shell', () => {
   });
 
   it('renders desktop shell with dashboard regions and meta fields', () => {
-    const root = renderAtViewport(1280, 832);
+    const root = renderAtViewport(1280, 832, { ...BASE_PROPS, onLeaveTable: () => undefined });
 
     expect(root.dataset.surface).toBe('dashboard');
     expect(root.dataset.breakpoint).toBe('desktop');
@@ -147,6 +147,12 @@ describe('dashboard table shell', () => {
     expect(root.querySelector('.dashboard-control-leave')).toBeNull();
   });
 
+  it('hides Leave table from spectators who hold no seat', () => {
+    const root = renderAtViewport(1280, 832);
+    expect(root.querySelector('.dashboard-control-leave')).toBeNull();
+    expect(root.querySelector('.dashboard-control-settings')).not.toBeNull();
+  });
+
   it('keeps player row, my hand, board, and actions as empty mounts', () => {
     const root = renderAtViewport(1280, 832);
 
@@ -174,7 +180,13 @@ describe('dashboard table shell', () => {
   });
 
   it('exposes named, focusable top-bar controls that do not open dialogs', () => {
-    const desktop = renderAtViewport(1280, 832);
+    let leaves = 0;
+    const desktop = renderAtViewport(1280, 832, {
+      ...BASE_PROPS,
+      onLeaveTable: () => {
+        leaves += 1;
+      },
+    });
     const settings = desktop.querySelector(
       '.dashboard-control-settings',
     ) as HTMLButtonElement;
@@ -183,6 +195,7 @@ describe('dashboard table shell', () => {
     expect(leave.tabIndex).toBe(0);
     settings.click();
     leave.click();
+    expect(leaves).toBe(1);
     expect(document.querySelector('dialog')).toBeNull();
 
     const phone = renderAtViewport(402, 874);

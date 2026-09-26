@@ -318,7 +318,7 @@ describe('sit, leave, and start_hand', () => {
     expect((await store.getSeat('table-1', '2'))?.displayName).toBe('z'.repeat(24));
   });
 
-  it('leave between hands frees the seat and rejects leave mid-hand', async () => {
+  it('leave between hands frees the seat; leave mid-hand folds and frees it after the hand', async () => {
     const { handler, store, sent } = createHarness(99);
     await setupTable(handler, store);
 
@@ -346,7 +346,9 @@ describe('sit, leave, and start_hand', () => {
       wsEvent('$default', 'conn-b', JSON.stringify({ action: 'sit', seatId: '3', displayName: 'Bob' })),
       {},
     );
-    const tokenB2 = (sent.get('conn-b')?.find((m) => m.type === 'sat') as { seatToken: string }).seatToken;
+    const tokenB2 = (sent.get('conn-b')?.filter((m) => m.type === 'sat').at(-1) as { seatToken: string })
+      .seatToken;
+    expect(tokenB2).not.toBe(tokenB);
 
     await handler(
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'start_hand', seatToken: tokenA })),
@@ -357,15 +359,30 @@ describe('sit, leave, and start_hand', () => {
       wsEvent('$default', 'conn-a', JSON.stringify({ action: 'leave', seatToken: tokenA })),
       {},
     );
-    expect(sent.get('conn-a')?.at(-1)).toEqual({ type: 'error', code: 'hand_in_progress' });
+    expect(sent.get('conn-a')?.at(-1)).toMatchObject({ type: 'table_snapshot' });
+    expect((await store.getConnection('conn-a'))?.seatId).toBeUndefined();
+    const departing = await store.getSeat('table-1', '1');
+    expect(departing?.leaveAfterHand).toBe(true);
+    expect(departing?.connectionId).toBeUndefined();
+    expect(lastSnapshot(sent.get('conn-a'))?.seats.some((seat) => seat.isLocal)).toBe(false);
 
-    const tableBeforeLeave = await store.getTable('table-1');
+    if ((await store.getTable('table-1'))?.phase !== 'complete') {
+      await handler(
+        wsEvent('$default', 'conn-b', JSON.stringify({ action: 'call', seatToken: tokenB2 })),
+        {},
+      );
+    }
+    const finished = await store.getTable('table-1');
+    expect(finished?.phase).toBe('complete');
+    expect(finished?.completeReason).toBe('fold_to_one');
+
     await handler(
-      wsEvent('$default', 'conn-b', JSON.stringify({ action: 'leave', seatToken: tokenB2 })),
+      wsEvent('$default', 'conn-b', JSON.stringify({ action: 'start_hand', seatToken: tokenB2 })),
       {},
     );
-    expect(sent.get('conn-b')?.at(-1)).toEqual({ type: 'error', code: 'hand_in_progress' });
-    expect(await store.getTable('table-1')).toEqual(tableBeforeLeave);
+    expect(await store.getSeat('table-1', '1')).toBeNull();
+    expect(lastSnapshot(sent.get('conn-b'))?.seatedPlayersLabel).toBe('1 / 8');
+    expect(sent.get('conn-b')?.at(-1)).toEqual({ type: 'error', code: 'insufficient_players' });
   });
 
   it('rejects start_hand with fewer than two players, while in progress, or from non-seated caller', async () => {

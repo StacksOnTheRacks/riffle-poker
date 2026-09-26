@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { startDashboardPlay, type DashboardPlaySession } from '../src/client/dashboard-play/session.js';
+import { AWAY_GRACE_MS } from '../src/runtime/reap.js';
 import { configFetch, type FakePlaySocket, flush, memoryStorage, setViewport } from './support/fake-play-socket.js';
 import { RuntimeBridge } from './support/runtime-bridge.js';
 
@@ -264,6 +265,62 @@ describe('continuous play on one table', () => {
     expect(seats.find((seat) => seat.seatId === nextSeat)?.folded).toBe(true);
     const table = await bridge.store.getTable(TABLE_ID);
     expect(table?.currentSeatId).not.toBe(nextSeat);
+  });
+
+  it('removes a seat that stays away past the grace period once someone else joins', async () => {
+    const alice = await openPlayer();
+    const bob = await openPlayer();
+    await sit(alice, '1', 'Alice');
+    await sit(bob, '2', 'Bob');
+    bob.session.dispose();
+    bridge.drop(bob.sockets[0]!);
+    await settle();
+    expect(alice.session.snapshot!.seats.find((seat) => seat.seatId === '2')?.away).toBe(true);
+
+    bridge.nowMs += AWAY_GRACE_MS - 1;
+    await openPlayer();
+    expect(await bridge.store.getSeat(TABLE_ID, '2')).not.toBeNull();
+
+    bridge.nowMs += 1;
+    await openPlayer();
+    expect(await bridge.store.getSeat(TABLE_ID, '2')).toBeNull();
+    expect(alice.session.snapshot!.seats.map((seat) => seat.seatId)).toEqual(['1']);
+    expect(alice.session.snapshot!.seatedPlayersLabel).toBe('1 / 8');
+  });
+
+  it('Leave table mid-hand detaches the player now and frees the seat after the hand', async () => {
+    const alice = await openPlayer();
+    const bob = await openPlayer();
+    const carol = await openPlayer();
+    await sit(alice, '1', 'Alice');
+    await sit(bob, '2', 'Bob');
+    await sit(carol, '3', 'Carol');
+    await click(alice, 'deal-hand');
+
+    await click(bob, 'leave-table');
+    expect(bob.session.hasSeatToken()).toBe(false);
+    expect(bob.storage.items.size).toBe(0);
+    expect(button(bob, 'leave-table')).toBeNull();
+    expect(alice.session.snapshot!.seats.find((seat) => seat.seatId === '2')?.away).toBe(true);
+
+    await playToCompletion([alice, carol], 'fold');
+    expect((await bridge.store.getSeat(TABLE_ID, '2'))?.folded).toBe(true);
+
+    await click(alice, 'deal-hand');
+    expect(await bridge.store.getSeat(TABLE_ID, '2')).toBeNull();
+    expect(alice.session.snapshot!.seats.map((seat) => seat.seatId)).toEqual(['1', '3']);
+    expect(alice.session.snapshot!.handNumber).toBe(2);
+  });
+
+  it('shows Leave seat while waiting on another player mid-hand', async () => {
+    const alice = await openPlayer();
+    const bob = await openPlayer();
+    await sit(alice, '1', 'Alice');
+    await sit(bob, '2', 'Bob');
+    await click(alice, 'deal-hand');
+
+    const waiting = [alice, bob].find(({ root }) => !root.querySelector('[data-action="fold"]'))!;
+    expect(button(waiting, 'leave-seat')).not.toBeNull();
   });
 
   it('lets a new player take an away seat between hands', async () => {
