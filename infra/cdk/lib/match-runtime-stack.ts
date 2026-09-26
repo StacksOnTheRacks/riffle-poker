@@ -18,12 +18,14 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3Deployment from 'aws-cdk-lib/aws-s3-deployment';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as customResources from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '../../..');
 export const DASHBOARD_ARTIFACT_DIR = path.join(repoRoot, 'public/dashboard');
+export const PLAY_ORIGIN_ARTIFACT_DIR = path.join(repoRoot, 'public/dashboard-riffle');
 
 export class MatchRuntimeStack extends Stack {
   readonly webSocketUrl: string;
@@ -150,6 +152,30 @@ export class MatchRuntimeStack extends Stack {
       value: `https://${distribution.distributionDomainName}`,
     });
 
+    const playOriginBucket = new s3.Bucket(this, 'PlayOriginBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+    });
+
+    new s3Deployment.BucketDeployment(this, 'PlayOriginDeployment', {
+      destinationBucket: playOriginBucket,
+      destinationKeyPrefix: 'riffle',
+      sources: [
+        s3Deployment.Source.asset(PLAY_ORIGIN_ARTIFACT_DIR),
+        s3Deployment.Source.jsonData('config.json', { webSocketUrl: this.webSocketUrl }),
+      ],
+    });
+
+    new ssm.StringParameter(this, 'PlayOriginBucketParameter', {
+      parameterName: '/galaxyclass/riffle/play-origin-bucket',
+      stringValue: playOriginBucket.bucketName,
+    });
+
+    new CfnOutput(this, 'PlayOriginBucketName', {
+      value: playOriginBucket.bucketName,
+    });
+
     const seedHandler = new lambdaNodejs.NodejsFunction(this, 'SeedTableHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, 'seed-table-handler.ts'),
@@ -186,7 +212,7 @@ export class MatchRuntimeStack extends Stack {
     });
 
     new CfnOutput(this, 'PlayUrl', {
-      value: `https://${distribution.distributionDomainName}/${seededTableId}`,
+      value: `https://galaxyclass.app/riffle/${seededTableId}`,
     });
   }
 }

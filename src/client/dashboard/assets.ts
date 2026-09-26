@@ -1,9 +1,14 @@
+import { publicBase } from './public-base.js';
+
 export interface AssetCard {
   rank: string;
   suit: 'h' | 'd' | 'c' | 's';
 }
 
-export const DASHBOARD_ASSET_BASE = '/assets';
+export function dashboardAssetBase(): string {
+  return `${publicBase()}/assets`;
+}
+
 export const AVATAR_COUNT = 116;
 
 const RANKS = new Set(['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']);
@@ -43,19 +48,19 @@ export function cardAssetUrl(card: AssetCard): string | null {
   if (!RANKS.has(rank) || !SUITS.has(card.suit)) {
     return null;
   }
-  return `${DASHBOARD_ASSET_BASE}/cards/${rank}${card.suit}.webp`;
+  return `${dashboardAssetBase()}/cards/${rank}${card.suit}.webp`;
 }
 
 export function cardBackUrl(): string {
-  return `${DASHBOARD_ASSET_BASE}/cards/back-blue.webp`;
+  return `${dashboardAssetBase()}/cards/back-blue.webp`;
 }
 
 export function iconUrl(name: string): string {
-  return `${DASHBOARD_ASSET_BASE}/icons/${name}.svg`;
+  return `${dashboardAssetBase()}/icons/${name}.svg`;
 }
 
 export function avatarAssetUrl(index: number): string {
-  return `${DASHBOARD_ASSET_BASE}/avatars/${index}.webp`;
+  return `${dashboardAssetBase()}/avatars/${index}.webp`;
 }
 
 /** Stable default avatar per seat so a player keeps the same face across renders and clients. */

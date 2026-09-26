@@ -31,17 +31,55 @@ export function resourcesOfType(
   >;
 }
 
-export function findStagedFile(outdir: string, fileName: string): string | null {
+export function findStagedFiles(outdir: string, fileName: string): string[] {
+  const matches: string[] = [];
+  if (!fs.existsSync(outdir)) {
+    return matches;
+  }
   for (const entry of fs.readdirSync(outdir, { withFileTypes: true })) {
     if (!entry.isDirectory() || !entry.name.startsWith('asset.')) {
       continue;
     }
     const candidate = path.join(outdir, entry.name, fileName);
     if (fs.existsSync(candidate)) {
-      return candidate;
+      matches.push(candidate);
     }
   }
-  return null;
+  return matches;
+}
+
+export function findStagedFile(outdir: string, fileName: string): string | null {
+  return findStagedFiles(outdir, fileName)[0] ?? null;
+}
+
+export function stagedIndexHtml(outdir: string, riffle: boolean): string {
+  const matches = findStagedFiles(outdir, 'index.html').filter((file) => {
+    const body = fs.readFileSync(file, 'utf8');
+    return body.includes('/riffle/') === riffle;
+  });
+  if (matches.length !== 1) {
+    throw new Error(`expected one ${riffle ? '/riffle' : 'root'} index.html, found ${matches.length}`);
+  }
+  return matches[0]!;
+}
+
+export function stagedConfigForDeployment(
+  outdir: string,
+  deploymentProps: Record<string, unknown>,
+): { raw: string; marker: string } {
+  const markers = deploymentProps.SourceMarkers as Array<Record<string, unknown>> | undefined;
+  for (const configPath of findStagedFiles(outdir, 'config.json')) {
+    const raw = fs.readFileSync(configPath, 'utf8');
+    const markerMatch = raw.match(/<<marker:[^>]+>>/);
+    if (!markerMatch) {
+      continue;
+    }
+    const marker = markerMatch[0];
+    if (markers?.some((entry) => Object.prototype.hasOwnProperty.call(entry, marker))) {
+      return { raw, marker };
+    }
+  }
+  throw new Error('no staged config.json belongs to this deployment');
 }
 
 const TEXT_ARTIFACT_EXTENSIONS = new Set(['.html', '.js', '.css', '.json', '.svg', '.txt', '.map']);
