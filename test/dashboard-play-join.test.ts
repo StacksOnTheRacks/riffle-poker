@@ -79,11 +79,19 @@ describe('parseTableIdFromPath', () => {
     expect(parseTableIdFromPath(`/${TABLE_ID.toUpperCase()}`)).toBe(TABLE_ID.toUpperCase());
   });
 
+  it('accepts the galaxyclass.app/riffle table path', () => {
+    expect(parseTableIdFromPath(`/riffle/${TABLE_ID}`)).toBe(TABLE_ID);
+    expect(parseTableIdFromPath(`/riffle/${TABLE_ID}/`)).toBe(TABLE_ID);
+  });
+
   it.each([
     '/',
     '',
+    '/riffle',
+    '/riffle/',
     '/not-a-uuid',
     `/play/${TABLE_ID}`,
+    `/riffle/${TABLE_ID}/extra`,
     `/${TABLE_ID}/extra`,
     `/${TABLE_ID}//`,
     `//${TABLE_ID}`,
@@ -99,7 +107,7 @@ describe('dashboard play GUID join', () => {
     setViewport(1440);
   });
 
-  it.each(['/', `/play/${TABLE_ID}`, `/${TABLE_ID}/extra`, '/not-a-uuid'])(
+  it.each(['/', '/riffle', '/riffle/', `/play/${TABLE_ID}`, `/${TABLE_ID}/extra`, '/not-a-uuid'])(
     'fails closed on %s without fetching config or opening a socket',
     async (pathname) => {
       const { root, sockets, sessionPromise, fetchCalls } = await start(pathname);
@@ -131,6 +139,20 @@ describe('dashboard play GUID join', () => {
     resolveConfig({ ok: true, json: async () => ({ webSocketUrl: WS_URL }) } as Response);
     await flush();
     expect(sockets).toHaveLength(1);
+  });
+
+  it('joins the seeded table from the /riffle subpath', async () => {
+    const { root, sockets, sessionPromise, fetchCalls } = await start(`/riffle/${TABLE_ID}`);
+    const session = await sessionPromise;
+
+    expect(session.tableId).toBe(TABLE_ID);
+    expect(fetchCalls).toEqual(['/config.json']);
+    const socket = sockets[0]!;
+    socket.emit('open');
+    expect(socket.sent).toEqual([{ action: 'join_table', tableId: TABLE_ID }]);
+    socket.receive(snapshot());
+    expect(session.phase).toBe('joined');
+    expect(root.dataset.surface).toBe('dashboard');
   });
 
   it('reads /config.json, connects to webSocketUrl, sends only join_table, and renders the dashboard shell', async () => {
