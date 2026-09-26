@@ -186,11 +186,14 @@ export function renderActionControls(
   panel.dataset.field = 'action-controls';
 
   if (isPhone) {
+    const turnHeader = document.createElement('div');
+    turnHeader.className = 'action-controls-turn-header';
+
     const yourTurn = document.createElement('p');
     yourTurn.className = 'action-controls-your-turn';
     yourTurn.dataset.field = 'your-turn';
     yourTurn.textContent = 'Your turn';
-    panel.append(yourTurn);
+    turnHeader.append(yourTurn);
 
     if (viewModel.timer) {
       const timerRow = document.createElement('div');
@@ -198,8 +201,10 @@ export function renderActionControls(
       timerRow.dataset.field = 'timer-row';
 
       const timerLabel = document.createElement('span');
+      timerLabel.className = 'action-controls-timer-label';
       timerLabel.dataset.field = 'timer-label';
       timerLabel.textContent = viewModel.timer.label;
+      turnHeader.append(timerLabel);
 
       const progress = document.createElement('div');
       progress.className = 'action-controls-timer-progress';
@@ -211,10 +216,34 @@ export function renderActionControls(
       progress.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
       progress.style.setProperty('--timer-fraction', String(fraction));
 
-      timerRow.append(timerLabel, progress);
+      timerRow.append(turnHeader, progress);
       panel.append(timerRow);
+    } else {
+      panel.append(turnHeader);
     }
   }
+
+  const sizing = document.createElement('div');
+  sizing.className = 'action-controls-sizing';
+
+  const amountRow = document.createElement('div');
+  amountRow.className = 'action-controls-amount-row';
+
+  const raiseSummary = document.createElement('div');
+  raiseSummary.className = 'action-controls-raise-summary';
+
+  const raiseSummaryLabel = document.createElement('span');
+  raiseSummaryLabel.className = 'action-controls-raise-label';
+  raiseSummaryLabel.textContent = 'Raise to';
+
+  const raiseSummaryAmount = document.createElement('span');
+  raiseSummaryAmount.className = 'action-controls-raise-amount';
+  raiseSummaryAmount.dataset.field = 'raise-amount';
+  raiseSummaryAmount.setAttribute('aria-live', 'polite');
+
+  raiseSummary.append(raiseSummaryLabel, raiseSummaryAmount);
+  raiseSummary.hidden = raiseDisabled;
+  amountRow.append(raiseSummary);
 
   const hint = document.createElement('p');
   hint.className = 'action-controls-hint';
@@ -236,7 +265,8 @@ export function renderActionControls(
   };
 
   updateHint();
-  panel.append(hint);
+  amountRow.append(hint);
+  sizing.append(amountRow);
 
   const checkEnabled = viewModel.toCall === 0;
   const callEnabled = viewModel.toCall > 0;
@@ -280,13 +310,13 @@ export function renderActionControls(
     `Raise to ${formatPlayChips(raiseTo)}`,
     !raiseDisabled,
   );
+  raiseButton.dataset.variant = 'primary';
   raiseGroup.append(raiseButton);
   if (!isPhone) {
     raiseGroup.append(createShortcutHint('R'));
   }
 
   buttonsRow.append(foldGroup, checkGroup, callGroup, raiseGroup);
-  panel.append(buttonsRow);
 
   const presetsRow = document.createElement('div');
   presetsRow.className = 'action-controls-presets';
@@ -303,12 +333,26 @@ export function renderActionControls(
   slider.disabled = raiseDisabled;
 
   const presetButtons: HTMLButtonElement[] = [];
+  const presets = buildPresets(viewModel, !isPhone);
 
   const updateRaiseLabel = (): void => {
     raiseButton.textContent = `Raise to ${formatPlayChips(raiseTo)}`;
+    raiseSummaryAmount.textContent = formatPlayChips(raiseTo);
+    const span = viewModel.allInTo - viewModel.minRaiseTo;
+    const fill = span > 0 ? ((raiseTo - viewModel.minRaiseTo) / span) * 100 : 100;
+    slider.style.setProperty('--fill', `${Math.min(100, Math.max(0, fill)).toFixed(2)}%`);
+    const selected = presets.findIndex((preset) => preset.amount === raiseTo);
+    presetButtons.forEach((button, index) => {
+      if (index === selected && !button.disabled) {
+        button.dataset.selected = 'true';
+        button.setAttribute('aria-pressed', 'true');
+      } else {
+        delete button.dataset.selected;
+        button.setAttribute('aria-pressed', 'false');
+      }
+    });
   };
 
-  const presets = buildPresets(viewModel, !isPhone);
   for (const preset of presets) {
     const presetButton = document.createElement('button');
     presetButton.type = 'button';
@@ -348,7 +392,9 @@ export function renderActionControls(
     presetsRow.append(presetButton);
   }
 
-  panel.append(presetsRow, slider);
+  sizing.append(presetsRow, slider);
+  panel.append(sizing, buttonsRow);
+  updateRaiseLabel();
 
   const dialog = createAllInDialog();
   panel.append(dialog);

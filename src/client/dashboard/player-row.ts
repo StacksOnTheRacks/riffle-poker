@@ -1,3 +1,5 @@
+import { cardAccessibleName, createCardImage } from './assets.js';
+
 export type PlayerRowPosition = 'D' | 'SB' | 'BB';
 
 export interface PlayerRowSeat {
@@ -17,6 +19,8 @@ export interface PlayerRowSeat {
   wonAmount?: number;
   holeCards?: Array<{ rank: string; suit: 'h' | 'd' | 'c' | 's' }>;
   phase?: 'betting' | 'complete';
+  /** Amount the local seat must call on its turn; shown on the local tile. */
+  toCall?: number;
 }
 
 export type DashboardBreakpoint = 'desktop' | 'tablet' | 'phone';
@@ -110,7 +114,56 @@ function createAvatarField(avatarUrl: string): HTMLElement {
   avatar.className = 'player-row-avatar';
   avatar.src = avatarUrl;
   avatar.alt = '';
+  avatar.decoding = 'async';
   return avatar;
+}
+
+function createInitialsField(displayName: string): HTMLElement {
+  const circle = document.createElement('div');
+  circle.className = 'player-row-initials';
+  circle.append(createTextField('initials', deriveInitials(displayName)));
+  return circle;
+}
+
+type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+
+function actionTone(text: string): BadgeTone {
+  if (/fold/i.test(text)) {
+    return 'danger';
+  }
+  if (/call/i.test(text)) {
+    return 'warning';
+  }
+  if (/raise|bet|won/i.test(text)) {
+    return 'success';
+  }
+  if (/all-in/i.test(text)) {
+    return 'info';
+  }
+  return 'neutral';
+}
+
+function asBadge(element: HTMLElement, tone: BadgeTone): HTMLElement {
+  element.classList.add('player-row-badge');
+  element.dataset.tone = tone;
+  return element;
+}
+
+/** Video-tile backdrops from the design; picked per seat so a player keeps one color. */
+const VIDEO_TONES = ['violet', 'green', 'ember', 'navy'] as const;
+
+function videoTone(seat: PlayerRowSeat): string {
+  if (seat.isLocal) {
+    return 'local';
+  }
+  if (!seat.avatarUrl) {
+    return 'camera-off';
+  }
+  let hash = 0;
+  for (const char of seat.seatId) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return VIDEO_TONES[hash % VIDEO_TONES.length] ?? 'violet';
 }
 
 function isHoleFaceCard(
@@ -134,12 +187,10 @@ function createCardFaces(
   cardsEl.dataset.cards = 'faces';
   cardsEl.className = 'player-row-card-faces';
 
+  cardsEl.setAttribute('role', 'img');
+  cardsEl.setAttribute('aria-label', cards.map(cardAccessibleName).join(', '));
   for (const card of cards) {
-    const face = document.createElement('span');
-    face.className = 'player-row-card-face';
-    face.textContent = `${card.rank.toUpperCase()}${card.suit === 'h' ? '♥' : card.suit === 'd' ? '♦' : card.suit === 'c' ? '♣' : '♠'}`;
-    face.setAttribute('aria-hidden', 'true');
-    cardsEl.append(face);
+    cardsEl.append(createCardImage(card, 'player-row-card-face'));
   }
 
   return cardsEl;
@@ -152,10 +203,7 @@ function createCardBacks(): HTMLElement {
   cards.className = 'player-row-card-backs';
 
   for (let index = 0; index < 2; index += 1) {
-    const back = document.createElement('span');
-    back.className = 'player-row-card-back';
-    back.setAttribute('aria-hidden', 'true');
-    cards.append(back);
+    cards.append(createCardImage('back', 'player-row-card-back'));
   }
 
   return cards;
@@ -169,11 +217,15 @@ function createTimer(
   }
 
   const timerText = createTextField('timer', formatTimerText(seat.turnRemainingMs));
-  timerText.className = 'player-row-timer-text';
+  timerText.className = 'player-row-timer-text visually-hidden';
+
+  const timerTrack = document.createElement('div');
+  timerTrack.className = 'player-row-timer-track';
 
   const timerBar = document.createElement('div');
   timerBar.className = 'player-row-timer-bar';
   timerBar.dataset.field = 'timer-bar';
+  timerTrack.append(timerBar);
 
   if (
     seat.turnBudgetMs !== null &&
@@ -187,7 +239,7 @@ function createTimer(
     timerBar.style.width = `${(fraction * 100).toFixed(2)}%`;
   }
 
-  return { timerText, timerBar };
+  return { timerText, timerBar: timerTrack };
 }
 
 function createSeatTile(
@@ -208,64 +260,112 @@ function createSeatTile(
 
   tile.dataset.state = seat.inHand ? (seat.allIn ? 'all-in' : 'in-hand') : 'folded';
 
-  if (seat.avatarUrl) {
-    tile.append(createAvatarField(seat.avatarUrl));
-  } else {
-    tile.append(createTextField('initials', deriveInitials(seat.displayName)));
+  const video = document.createElement('div');
+  video.className = 'player-row-video';
+  video.dataset.tone = videoTone(seat);
+  video.append(
+    seat.avatarUrl ? createAvatarField(seat.avatarUrl) : createInitialsField(seat.displayName),
+  );
+
+  if (seat.position) {
+    const position = createTextField('position', seat.position);
+    position.className = 'player-row-position';
+    position.dataset.position = seat.position;
+    position.setAttribute('aria-label', POSITION_LABELS[seat.position]);
+    video.append(position);
   }
 
-  const nameText = seat.isLocal ? 'You' : seat.displayName;
-  tile.append(createTextField('name', nameText));
+  const name = createTextField('name', seat.isLocal ? 'You' : seat.displayName);
+  name.className = 'player-row-name';
 
-  tile.append(createStackField(breakpoint, seat.stack));
+  const status = document.createElement('div');
+  status.className = 'player-row-status';
 
+  const badges: HTMLElement[] = [];
+  const localTurn = seat.isLocal && seat.acting && seat.inHand;
+  if (localTurn && breakpoint !== 'phone') {
+    const turn = document.createElement('span');
+    turn.textContent = 'Your turn';
+    turn.setAttribute('aria-hidden', 'true');
+    badges.push(asBadge(turn, 'info'));
+  }
   if (seat.allIn && seat.inHand) {
-    tile.append(createTextField('all-in', 'All-in'));
+    badges.push(asBadge(createTextField('all-in', 'All-in'), 'info'));
   }
-
   if (seat.wonAmount !== undefined && seat.wonAmount > 0) {
     const won = createTextField('won', `Won ${formatPlayChips(seat.wonAmount)}`);
     won.setAttribute('role', 'status');
     won.setAttribute('aria-live', 'polite');
-    tile.append(won);
+    badges.push(asBadge(won, 'success'));
+  }
+  if (seat.lastAction && !localTurn) {
+    badges.push(asBadge(createTextField('last-action', seat.lastAction), actionTone(seat.lastAction)));
   }
 
-  if (seat.lastAction) {
-    tile.append(createTextField('last-action', seat.lastAction));
+  if (breakpoint === 'phone') {
+    video.dataset.compact = 'true';
+    const firstName = seat.displayName.trim().split(/\s+/)[0] ?? '';
+    if (!seat.isLocal && firstName && firstName !== seat.displayName) {
+      name.textContent = firstName;
+      name.title = seat.displayName;
+    }
+    status.append(name, createStackField(breakpoint, seat.stack), ...badges);
+    tile.append(video, status);
+    return tile;
   }
 
-  if (seat.position) {
-    const position = createTextField('position', seat.position);
-    position.setAttribute('aria-label', POSITION_LABELS[seat.position]);
-    tile.append(position);
-  }
+  video.append(name);
 
-  if (breakpoint !== 'phone' && seat.committed > 0) {
-    tile.append(
-      createTextField('committed', `${formatPlayChips(seat.committed)} in`),
-    );
-  }
+  const stackRow = document.createElement('div');
+  stackRow.className = 'player-row-stack-row';
+  stackRow.append(createStackField(breakpoint, seat.stack));
 
-  if (!seat.isLocal && breakpoint !== 'phone') {
+  if (!seat.isLocal) {
     if (
       seat.holeCards &&
       seat.holeCards.length === 2 &&
       isHoleFaceCard(seat.holeCards[0]) &&
       isHoleFaceCard(seat.holeCards[1])
     ) {
-      tile.append(createCardFaces(seat.holeCards));
+      stackRow.append(createCardFaces(seat.holeCards));
     } else if (seat.inHand) {
-      tile.append(createCardBacks());
+      stackRow.append(createCardBacks());
     } else {
-      tile.append(createTextField('fold', 'Fold'));
+      const fold = createTextField('fold', 'Fold');
+      fold.className = 'visually-hidden';
+      stackRow.append(fold);
     }
+  }
+  status.append(stackRow);
+
+  const detail =
+    localTurn && seat.toCall !== undefined && seat.toCall > 0
+      ? `To call ${formatPlayChips(seat.toCall)}`
+      : seat.committed > 0
+        ? `${formatPlayChips(seat.committed)} in`
+        : null;
+
+  if (badges.length > 0 || detail) {
+    const actionRow = document.createElement('div');
+    actionRow.className = 'player-row-action-row';
+    const badgeGroup = document.createElement('div');
+    badgeGroup.className = 'player-row-badges';
+    badgeGroup.append(...badges);
+    actionRow.append(badgeGroup);
+    if (detail) {
+      const committed = createTextField('committed', detail);
+      committed.className = 'player-row-committed';
+      actionRow.append(committed);
+    }
+    status.append(actionRow);
   }
 
   const timer = createTimer(seat);
   if (timer) {
-    tile.append(timer.timerText, timer.timerBar);
+    status.append(timer.timerText, timer.timerBar);
   }
 
+  tile.append(video, status);
   return tile;
 }
 

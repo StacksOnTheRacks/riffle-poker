@@ -3,7 +3,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { before, describe, it } from 'node:test';
 import { DASHBOARD_ARTIFACT_DIR } from '../lib/match-runtime-stack.js';
-import { resourcesOfType, synthMatchRuntimeStack, type SynthResult } from './support.js';
+import {
+  listTextArtifacts,
+  resourcesOfType,
+  synthMatchRuntimeStack,
+  type SynthResult,
+} from './support.js';
 
 const UUID_LIKE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -81,8 +86,8 @@ describe('MatchRuntimeStack seeded table', () => {
   });
 
   it('keeps the seeded id out of the SPA artifact and config.json', () => {
-    for (const name of fs.readdirSync(DASHBOARD_ARTIFACT_DIR)) {
-      const body = fs.readFileSync(path.join(DASHBOARD_ARTIFACT_DIR, name), 'utf8');
+    for (const file of listTextArtifacts(DASHBOARD_ARTIFACT_DIR)) {
+      const body = fs.readFileSync(file, 'utf8');
       assert.doesNotMatch(body, /SeededTableId|PlayUrl/);
     }
 

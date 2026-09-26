@@ -1,3 +1,4 @@
+import { cardAccessibleName, cardAssetUrl, createCardImage, createChip } from './assets.js';
 import { formatPlayChips } from './player-row.js';
 
 export interface BoardCard {
@@ -17,29 +18,6 @@ export interface BoardAndPotViewModel {
 }
 
 type DashboardBreakpoint = 'desktop' | 'tablet' | 'phone';
-
-const RANK_NAMES: Record<string, string> = {
-  A: 'Ace',
-  K: 'King',
-  Q: 'Queen',
-  J: 'Jack',
-  T: 'Ten',
-  '9': 'Nine',
-  '8': 'Eight',
-  '7': 'Seven',
-  '6': 'Six',
-  '5': 'Five',
-  '4': 'Four',
-  '3': 'Three',
-  '2': 'Two',
-};
-
-const SUIT_NAMES: Record<BoardCard['suit'], string> = {
-  h: 'Hearts',
-  d: 'Diamonds',
-  c: 'Clubs',
-  s: 'Spades',
-};
 
 const SUIT_SYMBOLS: Record<BoardCard['suit'], string> = {
   h: '♥',
@@ -63,14 +41,16 @@ function getDashboardBreakpoint(region: HTMLElement): DashboardBreakpoint {
   return 'desktop';
 }
 
-function formatAccessibleCardName(card: BoardCard): string {
-  const rankName = RANK_NAMES[card.rank.toUpperCase()] ?? card.rank;
-  const suitName = SUIT_NAMES[card.suit];
-  return `${rankName} of ${suitName}`;
-}
-
 function formatVisibleCard(card: BoardCard): string {
   return `${card.rank.toUpperCase()}${SUIT_SYMBOLS[card.suit]}`;
+}
+
+function createTextFace(card: BoardCard): HTMLElement {
+  const face = document.createElement('span');
+  face.className = 'board-card-face';
+  face.textContent = formatVisibleCard(card);
+  face.setAttribute('aria-hidden', 'true');
+  return face;
 }
 
 function formatPlayersInHand(count: number): string {
@@ -90,16 +70,16 @@ function createCardSlot(
   slot.dataset.field = field;
 
   if (card) {
-    slot.setAttribute('aria-label', formatAccessibleCardName(card));
-    const visible = document.createElement('span');
-    visible.className = 'board-card-face';
-    visible.dataset.field = `${field}-face`;
-    visible.textContent = formatVisibleCard(card);
-    visible.setAttribute('aria-hidden', 'true');
-    slot.append(visible);
+    slot.dataset.filled = 'true';
+    slot.setAttribute('role', 'img');
+    slot.setAttribute('aria-label', cardAccessibleName(card));
+    const face = cardAssetUrl(card) ? createCardImage(card, 'board-card-face') : createTextFace(card);
+    face.dataset.field = `${field}-face`;
+    slot.append(face);
     return slot;
   }
 
+  slot.setAttribute('role', 'img');
   slot.setAttribute('aria-label', emptyLabel);
   const placeholder = document.createElement('span');
   placeholder.className = 'board-card-placeholder';
@@ -123,7 +103,6 @@ function createStreetGroup(
   labelEl.className = 'board-street-label';
   labelEl.dataset.field = `${street}-label`;
   labelEl.textContent = label;
-  group.append(labelEl);
 
   const slots = document.createElement('div');
   slots.className = 'board-street-slots';
@@ -135,8 +114,34 @@ function createStreetGroup(
     );
   });
 
-  group.append(slots);
+  group.append(slots, labelEl);
   return group;
+}
+
+function createPotLabel(text: string): HTMLElement {
+  const potLabel = document.createElement('span');
+  potLabel.className = 'board-pot-label';
+  potLabel.dataset.field = 'pot-label';
+  potLabel.textContent = text;
+  return potLabel;
+}
+
+function createPotAmount(amount: number): HTMLElement {
+  const potAmount = document.createElement('span');
+  potAmount.className = 'board-pot-amount';
+  potAmount.dataset.field = 'pot-amount';
+  potAmount.textContent = formatPlayChips(amount);
+  return potAmount;
+}
+
+function createPotRows(pots: Array<{ label: string; amount: number }>): HTMLElement[] {
+  return pots.map((pot) => {
+    const row = document.createElement('div');
+    row.className = 'board-pot-row';
+    row.dataset.field = 'pot-row';
+    row.append(createPotLabel(pot.label), createPotAmount(pot.amount));
+    return row;
+  });
 }
 
 function createPotSection(
@@ -147,39 +152,18 @@ function createPotSection(
   potSection.className = 'board-pot';
   potSection.dataset.field = 'pot-section';
 
+  const heading = document.createElement('div');
+  heading.className = 'board-pot-heading';
+  heading.append(createChip());
+  potSection.append(heading);
+
   if (viewModel.pots && viewModel.pots.length > 1) {
-    for (const pot of viewModel.pots) {
-      const row = document.createElement('div');
-      row.className = 'board-pot-row';
-      row.dataset.field = 'pot-row';
-
-      const potLabel = document.createElement('span');
-      potLabel.className = 'board-pot-label';
-      potLabel.dataset.field = 'pot-label';
-      potLabel.textContent = pot.label;
-      row.append(potLabel);
-
-      const potAmount = document.createElement('span');
-      potAmount.className = 'board-pot-amount';
-      potAmount.dataset.field = 'pot-amount';
-      potAmount.textContent = formatPlayChips(pot.amount);
-      row.append(potAmount);
-
-      potSection.append(row);
-    }
+    potSection.dataset.pots = 'split';
+    potSection.append(...createPotRows(viewModel.pots));
   } else {
-    const potLabel = document.createElement('span');
-    potLabel.className = 'board-pot-label';
-    potLabel.dataset.field = 'pot-label';
-    potLabel.textContent = 'Pot';
-    potSection.append(potLabel);
-
+    heading.append(createPotLabel('Pot'));
     if (viewModel.pot !== undefined) {
-      const potAmount = document.createElement('span');
-      potAmount.className = 'board-pot-amount';
-      potAmount.dataset.field = 'pot-amount';
-      potAmount.textContent = formatPlayChips(viewModel.pot);
-      potSection.append(potAmount);
+      potSection.append(createPotAmount(viewModel.pot));
     }
   }
 
@@ -253,40 +237,14 @@ function renderPhone(panel: HTMLElement, viewModel: BoardAndPotViewModel): void 
   const potRow = document.createElement('div');
   potRow.className = 'board-phone-pot';
   potRow.dataset.field = 'phone-pot';
+  potRow.append(createChip());
 
   if (viewModel.pots && viewModel.pots.length > 1) {
-    for (const pot of viewModel.pots) {
-      const row = document.createElement('div');
-      row.className = 'board-pot-row';
-      row.dataset.field = 'pot-row';
-
-      const potLabel = document.createElement('span');
-      potLabel.className = 'board-pot-label';
-      potLabel.dataset.field = 'pot-label';
-      potLabel.textContent = pot.label;
-      row.append(potLabel);
-
-      const potAmount = document.createElement('span');
-      potAmount.className = 'board-pot-amount';
-      potAmount.dataset.field = 'pot-amount';
-      potAmount.textContent = formatPlayChips(pot.amount);
-      row.append(potAmount);
-
-      potRow.append(row);
-    }
+    potRow.append(...createPotRows(viewModel.pots));
   } else {
-    const potLabel = document.createElement('span');
-    potLabel.className = 'board-pot-label';
-    potLabel.dataset.field = 'pot-label';
-    potLabel.textContent = 'Pot';
-    potRow.append(potLabel);
-
+    potRow.append(createPotLabel('Pot'));
     if (viewModel.pot !== undefined) {
-      const potAmount = document.createElement('span');
-      potAmount.className = 'board-pot-amount';
-      potAmount.dataset.field = 'pot-amount';
-      potAmount.textContent = formatPlayChips(viewModel.pot);
-      potRow.append(potAmount);
+      potRow.append(createPotAmount(viewModel.pot));
     }
   }
 

@@ -249,7 +249,7 @@ describe('my hand panel', () => {
     expect(action?.textContent).toBe(XSS_ACTION);
     expect(name?.innerHTML).not.toContain('<img');
     expect(action?.innerHTML).not.toContain('<script>');
-    expect(root.querySelector('img')).toBeNull();
+    expect(root.querySelector('[data-field="action-log"] img')).toBeNull();
     expect(root.querySelector('script')).toBeNull();
   });
 });

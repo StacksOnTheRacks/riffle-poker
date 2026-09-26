@@ -7,6 +7,7 @@ import { DASHBOARD_ARTIFACT_DIR } from '../lib/match-runtime-stack.js';
 import {
   CREDENTIAL_PATTERNS,
   findStagedFile,
+  listTextArtifacts,
   resourcesOfType,
   synthMatchRuntimeStack,
   type SynthResult,
@@ -148,8 +149,9 @@ describe('MatchRuntimeStack dashboard SPA hosting', () => {
   });
 
   it('ships no credential material in the built dashboard artifact', () => {
-    for (const name of fs.readdirSync(DASHBOARD_ARTIFACT_DIR)) {
-      const body = fs.readFileSync(path.join(DASHBOARD_ARTIFACT_DIR, name), 'utf8');
+    for (const file of listTextArtifacts(DASHBOARD_ARTIFACT_DIR)) {
+      const body = fs.readFileSync(file, 'utf8');
+      const name = path.relative(DASHBOARD_ARTIFACT_DIR, file);
       for (const pattern of CREDENTIAL_PATTERNS) {
         assert.doesNotMatch(body, pattern, `${name} must not contain ${pattern}`);
       }

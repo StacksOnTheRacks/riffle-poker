@@ -1,3 +1,4 @@
+import { cardAssetUrl, createCardImage } from './assets.js';
 import { formatPlayChips } from './player-row.js';
 
 export interface PocketCard {
@@ -123,18 +124,41 @@ function createPocketFaces(cards: PocketCard[]): HTMLElement {
   for (const card of cards) {
     const face = document.createElement('div');
     face.className = 'my-hand-pocket-card';
+    face.setAttribute('role', 'img');
     face.setAttribute('aria-label', formatAccessibleCardName(card));
 
-    const visible = document.createElement('span');
-    visible.className = 'my-hand-pocket-card-rank-suit';
-    visible.textContent = formatVisibleCard(card);
-    visible.setAttribute('aria-hidden', 'true');
-
-    face.append(visible);
+    if (cardAssetUrl(card)) {
+      face.append(createCardImage(card, 'my-hand-pocket-card-image'));
+    } else {
+      const visible = document.createElement('span');
+      visible.className = 'my-hand-pocket-card-rank-suit';
+      visible.textContent = formatVisibleCard(card);
+      visible.setAttribute('aria-hidden', 'true');
+      face.append(visible);
+    }
     group.append(face);
   }
 
   return group;
+}
+
+function toneFor(text: string): 'success' | 'warning' | 'danger' | 'neutral' {
+  if (/fold|weak/i.test(text)) {
+    return 'danger';
+  }
+  if (/call|medium|fair|draw/i.test(text)) {
+    return 'warning';
+  }
+  if (/raise|bet|strong|monster|nuts|won/i.test(text)) {
+    return 'success';
+  }
+  return 'neutral';
+}
+
+function createDivider(): HTMLElement {
+  const divider = document.createElement('hr');
+  divider.className = 'my-hand-divider';
+  return divider;
 }
 
 function createBankField(bank: number): HTMLElement {
@@ -201,20 +225,37 @@ function createStrengthSection(
   section.className = 'my-hand-strength';
   section.dataset.field = 'strength';
 
-  if (breakpoint !== 'phone') {
-    section.append(
+  const tier = viewModel.tier
+    ? createTextElement('my-hand-tier', 'tier', viewModel.tier)
+    : null;
+  if (tier && viewModel.tier) {
+    tier.dataset.tone = toneFor(viewModel.tier);
+  }
+
+  const madeHand = viewModel.madeHand
+    ? createTextElement('my-hand-made-hand', 'made-hand', viewModel.madeHand)
+    : null;
+
+  if (breakpoint === 'phone') {
+    if (madeHand) {
+      section.append(madeHand);
+    }
+  } else {
+    const header = document.createElement('div');
+    header.className = 'my-hand-strength-header';
+    const heading = document.createElement('div');
+    heading.className = 'my-hand-strength-heading';
+    heading.append(
       createTextElement('my-hand-strength-label', 'strength-label', 'Hand strength'),
     );
-  }
-
-  if (viewModel.madeHand) {
-    section.append(
-      createTextElement('my-hand-made-hand', 'made-hand', viewModel.madeHand),
-    );
-  }
-
-  if (viewModel.tier) {
-    section.append(createTextElement('my-hand-tier', 'tier', viewModel.tier));
+    if (madeHand) {
+      heading.append(madeHand);
+    }
+    header.append(heading);
+    if (tier) {
+      header.append(tier);
+    }
+    section.append(header);
   }
 
   if (viewModel.meterFilled !== undefined) {
@@ -240,16 +281,56 @@ function createStrengthSection(
     }
 
     section.append(meter);
+
+    if (breakpoint !== 'phone') {
+      const scale = document.createElement('div');
+      scale.className = 'my-hand-meter-scale';
+      scale.setAttribute('aria-hidden', 'true');
+      scale.append(
+        createTextElement('my-hand-meter-scale-label', 'meter-scale-low', METER_LABELS[0] ?? ''),
+        createTextElement(
+          'my-hand-meter-scale-label',
+          'meter-scale-high',
+          METER_LABELS[METER_LABELS.length - 1] ?? '',
+        ),
+      );
+      section.append(scale);
+    }
+  }
+
+  if (breakpoint === 'phone') {
+    if (tier || viewModel.outsPhrase) {
+      const meta = document.createElement('div');
+      meta.className = 'my-hand-strength-meta';
+      if (tier) {
+        meta.append(tier);
+      }
+      if (viewModel.outsPhrase) {
+        meta.append(createOutsField(viewModel.outsPhrase));
+      }
+      section.append(meta);
+    }
+  } else if (viewModel.outsPhrase) {
+    section.append(createOutsField(viewModel.outsPhrase, viewModel.outsCount));
   }
 
   return section;
 }
 
-function createOutsField(outsPhrase: string): HTMLElement {
+function createOutsField(outsPhrase: string, outsCount?: number): HTMLElement {
   const wrapper = document.createElement('div');
   wrapper.className = 'my-hand-outs';
   wrapper.dataset.field = 'outs';
   wrapper.append(createTextElement('my-hand-outs-phrase', 'outs-phrase', outsPhrase));
+  if (outsCount !== undefined) {
+    wrapper.append(
+      createTextElement(
+        'my-hand-outs-count',
+        'outs-count',
+        `${outsCount} ${outsCount === 1 ? 'out' : 'outs'}`,
+      ),
+    );
+  }
   return wrapper;
 }
 
@@ -287,6 +368,7 @@ function createActionLog(
     const action = document.createElement('span');
     action.className = 'my-hand-action-log-action';
     action.dataset.field = 'action-log-action';
+    action.dataset.tone = toneFor(entry.actionText);
     action.textContent = entry.actionText;
 
     row.append(name, action);
@@ -306,39 +388,78 @@ export function renderMyHandPanel(
   const breakpoint = getDashboardBreakpoint(region);
   const panel = document.createElement('div');
   panel.className = 'my-hand-panel';
+  panel.dataset.layout = breakpoint;
 
   const pocketCards = viewModel.pocketCards ?? [];
-  if (pocketCards.length > 0) {
-    panel.append(createPocketFaces(pocketCards));
+  const pocket = pocketCards.length > 0 ? createPocketFaces(pocketCards) : null;
+
+  const money = document.createElement('div');
+  money.className = 'my-hand-money';
+  money.append(createBankField(viewModel.bank));
+
+  const strength =
+    createStrengthSection(viewModel, breakpoint) ??
+    (viewModel.outsPhrase ? createOutsField(viewModel.outsPhrase, viewModel.outsCount) : null);
+
+  if (breakpoint === 'phone') {
+    if (strength) {
+      money.append(strength);
+    }
+    if (pocket) {
+      panel.append(pocket);
+    }
+    panel.append(money);
+    region.append(panel);
+    return;
   }
 
-  panel.append(createBankField(viewModel.bank));
-
-  if (breakpoint !== 'phone') {
-    if (viewModel.sessionDelta !== undefined) {
-      panel.append(createSessionField(viewModel.sessionDelta));
-    }
-    if (viewModel.committedThisHand !== undefined) {
-      panel.append(createCommittedField(viewModel.committedThisHand));
-    }
+  if (viewModel.sessionDelta !== undefined) {
+    const session = createSessionField(viewModel.sessionDelta);
+    session.dataset.tone = viewModel.sessionDelta < 0 ? 'danger' : 'success';
+    money.append(session);
+  }
+  if (viewModel.committedThisHand !== undefined) {
+    money.append(createCommittedField(viewModel.committedThisHand));
   }
 
-  const strength = createStrengthSection(viewModel, breakpoint);
+  const top = document.createElement('div');
+  top.className = 'my-hand-top';
+  if (pocket) {
+    top.append(pocket);
+  }
+  top.append(money);
+
+  const actionLog =
+    viewModel.street && viewModel.actionLog !== undefined
+      ? createActionLog(viewModel.street, viewModel.actionLog)
+      : null;
+
+  const details: HTMLElement[] = [];
   if (strength) {
-    panel.append(strength);
+    details.push(strength);
+  }
+  if (actionLog) {
+    if (details.length > 0) {
+      details.push(createDivider());
+    }
+    details.push(actionLog);
   }
 
-  if (viewModel.outsPhrase) {
-    panel.append(createOutsField(viewModel.outsPhrase));
+  if (breakpoint === 'tablet') {
+    panel.append(top);
+    if (details.length > 0) {
+      const column = document.createElement('div');
+      column.className = 'my-hand-details';
+      column.append(...details);
+      panel.append(column);
+    }
+    region.append(panel);
+    return;
   }
 
-  if (
-    breakpoint !== 'phone' &&
-    viewModel.street &&
-    viewModel.actionLog !== undefined
-  ) {
-    panel.append(createActionLog(viewModel.street, viewModel.actionLog));
+  panel.append(top);
+  if (details.length > 0) {
+    panel.append(createDivider(), ...details);
   }
-
   region.append(panel);
 }
